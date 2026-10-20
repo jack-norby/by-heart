@@ -15,7 +15,7 @@
     voice: "", rate: 0.85, autoRead: false,
     method: "say", forgiving: true,
     newPhrases: 4, reviewsPerDay: 15, retention: 0.9, weekGoal: 4,
-    tr: "BSB", tradition: "all",
+    tr: "ESV",
   };
   function fresh() {
     return { v: 1, created: M.today(), welcomed: false, settings: Object.assign({}, DEFAULT_SETTINGS),
@@ -39,7 +39,7 @@
   const set = () => state.settings;
 
   // ---------- the library ----------
-  function allItems() { return LIBRARY.concat(state.custom); }
+  function allItems() { return PRAYERS.concat(state.custom); }
   function item(id) {
     const base = allItems().find(x => x.id === id);
     if (!base) return null;
@@ -58,14 +58,10 @@
     if (!state.progress[id]) state.progress[id] = { stage: "learning", learned: 0, started: M.today() };
     return state.progress[id];
   }
-  function shown(it) { // prayers filtered by the chosen tradition
-    if (it.kind === "verse" || !it.tradition) return true;
-    const t = set().tradition;
-    return t === "all" || it.tradition.includes("all") || it.tradition.includes(t);
-  }
   function status(it) {
     const p = prog(it.id);
     if (!p) return { key: "new", label: "New" };
+    if (p.stage === "learning" && !it.text) return { key: "learning", label: "Learning" };
     if (p.stage === "learning") return { key: "learning", label: "Learning · " + Math.min(p.learned || 0, phrasesOf(it).length) + " of " + phrasesOf(it).length + " lines" };
     if (p.stage === "practicing") return { key: "practicing", label: "Practicing", good: p.good || 0 };
     return { key: "memorized", label: p.refresh ? "Memorized · needs a refresh" : "Memorized" };
@@ -81,11 +77,11 @@
   }
   function dueItems() {
     const t = M.today();
-    return allItems().filter(it => { const p = prog(it.id); return p && p.stage !== "learning" && p.due && p.due <= t; })
+    return allItems().filter(it => { const p = prog(it.id); return it.text && p && p.stage !== "learning" && p.due && p.due <= t; })
       .sort((a, b) => prog(a.id).due.localeCompare(prog(b.id).due));
   }
   function learningItems() {
-    return allItems().filter(it => { const p = prog(it.id); return p && p.stage === "learning"; })
+    return allItems().filter(it => { const p = prog(it.id); return it.text && p && p.stage === "learning"; })
       .sort((a, b) => (prog(b.id).touched || 0) - (prog(a.id).touched || 0));
   }
   function dayLog(iso) { return state.days[iso || M.today()] || { s: 0, r: 0 }; }
@@ -174,6 +170,9 @@
     speechSynthesis.speak(u);
   }
   function stopSpeaking() { if (TTS) speechSynthesis.cancel(); }
+  // API.Bible's license doesn't allow text-to-speech for the NKJV or CSB, so those never get a Listen button.
+  const canHear = it => TTS && !!it && Bible.canSpeak(it);
+  const hearBtn = (label) => canHear(curItem()) ? '<button class="btn" data-act="hear">' + ICON.speaker + label + "</button>" : "";
   // Map a spoken character offset back to a word index in tokens joined by spaces.
   function wordAt(tokens, charIndex) {
     let c = 0;
@@ -235,8 +234,10 @@
     const sc = $(".scroller"); if (sc && name !== "practice") sc.scrollTop = 0;
     if (name === "practice") afterPracticeRender();
     if (name === "settings") fillVoices();
+    if ((name === "item" || name === "listen") && item(arg)) shown(item(arg));
   }
-  const TAB_OF = { today: "today", library: "library", item: "library", add: "library", progress: "progress", settings: "settings" };
+  const TAB_OF = { today: "today", library: "library", item: "library", add: "library", pick: "library", paste: "library", progress: "progress", settings: "settings", copyright: "settings" };
+  function shown(it) { if (it && it.fums && it.text) Bible.reportView(it.fums); } // FUMS: tell API.Bible the text was on screen
 
   // ---------- Today ----------
   function isStandalone() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
@@ -263,7 +264,7 @@
     } else {
       const any = allItems().some(it => prog(it.id));
       next = '<div class="card card--next"><p class="next-what">' + (any ? "Nothing is due today." : "Pick something to learn first.") + '</p>' +
-        '<a class="btn btn--primary btn--big" href="#library">' + (any ? "Learn something new" : "Choose a verse or prayer") + "</a>" +
+        '<a class="btn btn--primary btn--big" href="' + (any ? "#library" : "#pick") + '">' + (any ? "Learn something new" : "Choose a verse") + "</a>" +
         (allItems().some(it => { const p = prog(it.id); return p && p.stage !== "learning"; }) ? '<button class="btn btn--quiet" data-act="practice-anyway">Practice anyway</button>' : "") + "</div>";
     }
     const plan = state.plan;
@@ -307,21 +308,40 @@
 
   // ---------- Library ----------
   let libTab = "verse", libQuery = "";
+  function sameRef(a, b) { return a && b && a.book === b.book && a.ch === b.ch && a.a === b.a && (a.b || a.a) === (b.b || b.a); }
+  function have(r, kind) { return state.custom.some(c => sameRef(c.r, r) && c.kind === kind); }
+  function suggestRow(e, kind, i) { // a verse or Scripture prayer that isn't on your list yet
+    return '<li><a class="row" href="#pick/' + kind + "/" + i + '"><span class="row-main"><span class="row-title">' + esc(e.title) +
+      '</span><span class="row-sub">' + esc(Bible.refString(e.r)) + '</span></span><span class="pill pill--add">Add</span></a></li>';
+  }
   function library() {
-    const tabs = [["verse", "Verses"], ["prayer", "Prayers"], ["mine", "Mine"]];
     const q = libQuery.trim().toLowerCase();
-    let items = allItems().filter(it => libTab === "mine" ? it.custom : libTab === "prayer" ? (it.kind === "prayer" || it.kind === "catechism") && !it.custom : it.kind === "verse" && !it.custom);
-    if (libTab === "prayer") items = items.filter(shown);
-    if (q) items = allItems().filter(it => (it.title + " " + it.ref + " " + it.text + " " + (it.tags || []).join(" ")).toLowerCase().includes(q));
-    const trad = libTab === "prayer" && !q ? '<div class="chips" role="group" aria-label="Show prayers from">' +
-      [["all", "All"], ["catholic", "Catholic"], ["orthodox", "Orthodox"], ["protestant", "Protestant"]].map(([v, l]) =>
-        '<button class="chip' + (set().tradition === v ? " on" : "") + '" aria-pressed="' + (set().tradition === v) + '" data-act="tradition" data-v="' + v + '">' + l + "</button>").join("") + "</div>" : "";
-    const empty = libTab === "mine" && !items.length && !q ? '<p class="empty">Verses and prayers you add show up here.</p>' : (!items.length ? '<p class="empty">Nothing matches that.</p>' : "");
+    const mineV = state.custom.filter(c => c.kind === "verse"), mineP = state.custom.filter(c => c.kind !== "verse");
+    let body;
+    if (q) {
+      const hits = allItems().filter(it => (it.title + " " + it.ref + " " + it.text).toLowerCase().includes(q));
+      const sugg = POPULAR.map((e, i) => [e, "verse", i]).concat(SCRIPTURE_PRAYERS.map((e, i) => [e, "prayer", i]))
+        .filter(([e, k]) => !have(e.r, k) && (e.title + " " + Bible.refString(e.r)).toLowerCase().includes(q));
+      const r = Bible.parseRef(libQuery);
+      body = (r ? '<a class="btn btn--primary btn--wide" href="#pick/ref/' + encodeURIComponent(libQuery.trim()) + '">Open ' + esc(Bible.refString(r)) + "</a>" : "") +
+        '<ul class="rows">' + hits.map(rowHTML).join("") + sugg.map(([e, k, i]) => suggestRow(e, k, i)).join("") + "</ul>" +
+        (!hits.length && !sugg.length && !r ? '<p class="empty">Nothing matches that. To find any verse, type a reference like <b>John 15:5</b>.</p>' : "");
+    } else if (libTab === "verse") {
+      body = '<a class="btn btn--primary btn--big" href="#pick">+ Add a verse</a>' +
+        '<a class="btn btn--wide" href="#paste">Paste from your Bible app</a>' +
+        (mineV.length ? '<h2 class="h2">My verses</h2><ul class="rows">' + mineV.map(rowHTML).join("") + "</ul>" : '<p class="fine center">Pick any verse in the Bible, or start with a popular one.</p>') +
+        '<h2 class="h2">Popular verses</h2><ul class="rows">' + POPULAR.map((e, i) => have(e.r, "verse") ? "" : suggestRow(e, "verse", i)).join("") + "</ul>";
+    } else {
+      body = '<a class="btn btn--wide" href="#add">+ Write your own prayer</a>' +
+        (mineP.length ? '<h2 class="h2">My prayers</h2><ul class="rows">' + mineP.map(rowHTML).join("") + "</ul>" : "") +
+        '<h2 class="h2">Prayers and creeds</h2><ul class="rows">' + PRAYERS.map(rowHTML).join("") + "</ul>" +
+        '<h2 class="h2">Prayers from Scripture</h2><p class="fine">These come in the translation you choose.</p><ul class="rows">' +
+        SCRIPTURE_PRAYERS.map((e, i) => have(e.r, "prayer") ? "" : suggestRow(e, "prayer", i)).join("") + "</ul>";
+    }
     return '<section class="view"><h1 class="h1">Library</h1>' +
-      '<label class="search"><span class="sr-only">Search</span><input type="search" id="lib-q" placeholder="Search verses and prayers" value="' + esc(libQuery) + '"></label>' +
-      (q ? "" : '<div class="seg" role="tablist">' + tabs.map(([v, l]) => '<button role="tab" aria-selected="' + (libTab === v) + '" data-act="lib-tab" data-v="' + v + '">' + l + "</button>").join("") + "</div>") +
-      trad + '<a class="btn btn--wide" href="#add">+ Add a verse or prayer</a>' +
-      '<ul class="rows">' + items.map(rowHTML).join("") + "</ul>" + empty + "</section>";
+      '<label class="search"><span class="sr-only">Search, or type a reference</span><input type="search" id="lib-q" placeholder="Search, or type John 15:5" value="' + esc(libQuery) + '" autocomplete="off"></label>' +
+      (q ? "" : '<div class="seg" role="tablist">' + [["verse", "Verses"], ["prayer", "Prayers"]].map(([v, l]) => '<button role="tab" aria-selected="' + (libTab === v) + '" data-act="lib-tab" data-v="' + v + '">' + l + "</button>").join("") + "</div>") +
+      body + "</section>";
   }
 
   // ---------- one item ----------
@@ -335,7 +355,8 @@
     if (!it) return '<section class="view"><p class="empty">That one isn\'t here anymore.</p><a class="btn" href="#library">Back to the library</a></section>';
     const p = prog(id), s = status(it);
     let primary;
-    if (!p) primary = '<button class="btn btn--primary btn--big" data-act="learn" data-id="' + esc(id) + '">Start learning</button>';
+    if (!it.text) primary = "";
+    else if (!p) primary = '<button class="btn btn--primary btn--big" data-act="learn" data-id="' + esc(id) + '">Start learning</button>';
     else if (p.stage === "learning") primary = '<button class="btn btn--primary btn--big" data-act="learn" data-id="' + esc(id) + '">Keep learning</button>';
     else primary = '<button class="btn btn--primary btn--big" data-act="review" data-id="' + esc(id) + '">Practice from memory</button>';
     const ladder = s.key === "practicing" ? '<p class="fine">' + dots(s.good) + " Recall it right on three different days and it's memorized. Next practice " + rel(p.due) + ".</p>" :
@@ -345,111 +366,216 @@
       '<p class="fine">Put each phrase on its own line if you like. Lines are how it gets learned.</p>' +
       '<div class="btns"><button class="btn btn--primary" data-act="save-edit" data-id="' + esc(id) + '">Save</button><button class="btn btn--quiet" data-act="cancel-edit">Cancel</button>' +
       (state.edits[id] ? '<button class="btn btn--quiet" data-act="restore-edit" data-id="' + esc(id) + '">Use the original</button>' : "") + "</div></div>" :
+      !it.text ? '<div class="card card--soft"><p>The ' + esc(trLabel(it.tr)) + " words need a quick refresh from API.Bible (its license asks for one every 30 days). Connect to the internet and they'll come back. Your progress is kept.</p></div>" :
       '<div class="card">' + linesHTML(it) + "</div>";
+    const extra = (it.text && canHear(it) ? '<button class="btn" data-act="listen-all" data-id="' + esc(id) + '">' + ICON.speaker + "Listen</button>" : "") +
+      (it.text && p && p.stage !== "learning" ? '<a class="btn" href="#listen/' + encodeURIComponent(id) + '">Say it to someone</a>' : "");
     return '<section class="view"><a class="back" href="#library">' + ICON.back + "Library</a>" +
-      '<h1 class="h1">' + esc(it.title) + '</h1><p class="ref">' + esc(it.ref) + (it.tr ? " · " + esc(trName(it.tr)) : "") + (it.edited ? " · your wording" : "") + "</p>" +
+      '<h1 class="h1">' + esc(it.title) + '</h1><p class="ref">' + esc(it.ref) + trCite(it) + (it.edited ? " · your wording" : "") + "</p>" +
       pill(it) + ladder + primary +
-      '<div class="btns"><button class="btn" data-act="listen-all" data-id="' + esc(id) + '">' + ICON.speaker + "Listen</button>" +
-      (p && p.stage !== "learning" ? '<a class="btn" href="#listen/' + encodeURIComponent(id) + '">Say it to someone</a>' : "") + "</div>" +
+      (extra ? '<div class="btns">' + extra + "</div>" : "") +
       (it.about ? '<div class="card card--soft"><h2 class="h3">What it means</h2><p>' + esc(it.about) + "</p></div>" : "") +
       body +
-      '<div class="btns btns--end">' + (editing === id ? "" : '<button class="btn btn--quiet" data-act="edit" data-id="' + esc(id) + '">Edit the words</button>') +
+      '<div class="btns btns--end">' + (editing === id || !Bible.canEdit(it) ? "" : '<button class="btn btn--quiet" data-act="edit" data-id="' + esc(id) + '">Edit the words</button>') +
       (p ? '<button class="btn btn--quiet" data-act="reset-item" data-id="' + esc(id) + '">Start this one over</button>' : "") +
       (it.custom ? '<button class="btn btn--quiet" data-act="remove-item" data-id="' + esc(id) + '">Remove</button>' : "") + "</div>" +
-      (it.credit ? '<p class="fine">' + esc(it.credit) + "</p>" : "") +
-      (it.tr === "BSB" ? '<p class="fine">Berean Standard Bible. Public domain.</p>' : "") + "</section>";
+      creditHTML(it.credit, it.tr) + "</section>";
+  }
+  // The translation after a reference. NKJV and CSB link to the copyright page, as API.Bible asks.
+  function trCite(it) { // an item, or a fetched passage ({tr})
+    if (!it || !it.tr) return "";
+    return " · " + (Bible.licensed(it) ? '<a href="#copyright">' + esc(trLabel(it.tr)) + "</a>" : esc(trLabel(it.tr)));
+  }
+  function linkTo(url) { return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url.replace(/^https?:\/\/(www\.)?/, "")) + "</a>"; }
+  function creditHTML(credit, tr) {
+    if (!credit) return "";
+    const t = Bible.translation(tr);
+    return '<p class="fine">' + esc(credit) + (t && t.link ? " " + linkTo(t.link) : "") +
+      (Bible.licensed({ tr }) ? (t.link ? "." : "") + ' Provided through <a href="https://api.bible" target="_blank" rel="noopener">API.Bible</a>. <a href="#copyright">Copyright details</a>' : "") + "</p>";
   }
 
-  // ---------- adding verses and prayers ----------
-  const TRANSLATIONS = [["BSB", "Berean Standard Bible"], ["eng_kjv", "King James Version"], ["ENGWEBP", "World English Bible"], ["eng_dra", "Douay-Rheims (Catholic)"]];
-  function trName(id) { const t = TRANSLATIONS.find(x => x[0] === id); return t ? (id === "BSB" ? "BSB" : id === "eng_kjv" ? "KJV" : id === "ENGWEBP" ? "WEB" : id === "eng_dra" ? "Douay-Rheims" : t[1]) : id; }
-  const BOOKS = [["GEN", "Genesis", "gen", "gn"], ["EXO", "Exodus", "ex", "exod"], ["LEV", "Leviticus", "lev", "lv"], ["NUM", "Numbers", "num", "nm"], ["DEU", "Deuteronomy", "deut", "dt"],
-    ["JOS", "Joshua", "josh", "jos"], ["JDG", "Judges", "judg", "jdg"], ["RUT", "Ruth", "ru"], ["1SA", "1 Samuel", "1sam", "1sa"], ["2SA", "2 Samuel", "2sam", "2sa"],
-    ["1KI", "1 Kings", "1kgs", "1ki"], ["2KI", "2 Kings", "2kgs", "2ki"], ["1CH", "1 Chronicles", "1chr", "1ch"], ["2CH", "2 Chronicles", "2chr", "2ch"], ["EZR", "Ezra", "ezr"],
-    ["NEH", "Nehemiah", "neh"], ["EST", "Esther", "esth", "est"], ["JOB", "Job", "jb"], ["PSA", "Psalms", "psalm", "ps", "psa", "pss"], ["PRO", "Proverbs", "prov", "pr", "prv"],
-    ["ECC", "Ecclesiastes", "eccl", "ecc", "qoh"], ["SNG", "Song of Songs", "song of solomon", "song", "sos", "sng"], ["ISA", "Isaiah", "isa", "is"], ["JER", "Jeremiah", "jer"],
-    ["LAM", "Lamentations", "lam"], ["EZK", "Ezekiel", "ezek", "ezk"], ["DAN", "Daniel", "dan", "dn"], ["HOS", "Hosea", "hos"], ["JOL", "Joel", "jl"], ["AMO", "Amos", "am"],
-    ["OBA", "Obadiah", "obad", "ob"], ["JON", "Jonah", "jon"], ["MIC", "Micah", "mic"], ["NAM", "Nahum", "nah"], ["HAB", "Habakkuk", "hab"], ["ZEP", "Zephaniah", "zeph", "zep"],
-    ["HAG", "Haggai", "hag"], ["ZEC", "Zechariah", "zech", "zec"], ["MAL", "Malachi", "mal"], ["MAT", "Matthew", "matt", "mt"], ["MRK", "Mark", "mk", "mrk"], ["LUK", "Luke", "lk", "luk"],
-    ["JHN", "John", "jn", "jhn"], ["ACT", "Acts", "act"], ["ROM", "Romans", "rom", "rm"], ["1CO", "1 Corinthians", "1cor", "1co"], ["2CO", "2 Corinthians", "2cor", "2co"],
-    ["GAL", "Galatians", "gal"], ["EPH", "Ephesians", "eph"], ["PHP", "Philippians", "phil", "php"], ["COL", "Colossians", "col"], ["1TH", "1 Thessalonians", "1thess", "1th"],
-    ["2TH", "2 Thessalonians", "2thess", "2th"], ["1TI", "1 Timothy", "1tim", "1ti"], ["2TI", "2 Timothy", "2tim", "2ti"], ["TIT", "Titus", "tit"], ["PHM", "Philemon", "phlm", "phm"],
-    ["HEB", "Hebrews", "heb"], ["JAS", "James", "jas", "jm"], ["1PE", "1 Peter", "1pet", "1pe"], ["2PE", "2 Peter", "2pet", "2pe"], ["1JN", "1 John", "1jn", "1jhn"],
-    ["2JN", "2 John", "2jn"], ["3JN", "3 John", "3jn"], ["JUD", "Jude", "jud"], ["REV", "Revelation", "rev", "rv", "revelations"]];
-  function findBook(raw) {
-    const n = raw.toLowerCase().replace(/\./g, "").replace(/^(first|i)\s+/, "1 ").replace(/^(second|ii)\s+/, "2 ").replace(/^(third|iii)\s+/, "3 ").replace(/\s+/g, " ").trim();
-    const flat = n.replace(/\s/g, "");
-    for (const b of BOOKS) if (b.slice(2).some(a => a.replace(/\s/g, "") === flat)) return b;
-    for (const b of BOOKS) if (b[1].toLowerCase().replace(/\s/g, "").startsWith(flat) && flat.length >= 2) return b;
-    return null;
+  // ---------- copyright ----------
+  // API.Bible asks for a copyright page that citations link to; it lists every translation's full notice.
+  function copyright() {
+    const credit = t => { const c = state.custom.find(x => x.tr === t.id && x.credit); return c ? c.credit : t.credit; };
+    const rows = Bible.TRANSLATIONS.filter(t => t.credit && (Bible.ready(t.id) || state.custom.some(c => c.tr === t.id))).map(t => '<div class="card"><h2 class="h3">' + esc(t.id) + " · " + esc(t.name) + "</h2>" +
+      '<p class="fine">' + esc(credit(t)) + "</p>" + (t.link ? '<p class="fine">' + linkTo(t.link) + "</p>" : "") +
+      (t.source === "abible" ? '<p class="fine">Provided through <a href="https://api.bible" target="_blank" rel="noopener">API.Bible</a>. Not read aloud, and the words can\'t be changed, as its license asks.</p>' : "") + "</div>").join("");
+    return '<section class="view"><a class="back" href="#settings">' + ICON.back + "Settings</a><h1 class=\"h1\">Copyright</h1>" + rows +
+      '<div class="card card--soft"><p class="fine">When NKJV or CSB words are on screen, By Heart tells API.Bible anonymously (their FUMS view count, which the publishers rely on). It sends no name or account, only random device and session numbers.</p>' +
+      '<p class="fine">BSB, KJV and WEB come through the Free Use Bible API (bible.helloao.org). Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation.</p></div></section>';
   }
-  function parseRef(s) {
-    const m = String(s).trim().match(/^([1-3]?\s*[A-Za-z][A-Za-z. ]*?)\s*(\d+)(?:\s*[:.]\s*(\d+)(?:\s*[-–—]\s*(\d+))?)?\s*$/);
-    if (!m) return null;
-    const b = findBook(m[1]);
-    if (!b) return null;
-    return { book: b[0], name: b[1], ch: +m[2], a: m[3] ? +m[3] : null, b: m[4] ? +m[4] : (m[3] ? +m[3] : null) };
+
+  // ---------- picking a verse ----------
+  // #pick browses books → chapters → verses. #pick/verse/3 and #pick/prayer/2 open a suggestion;
+  // #pick/ref/John 3:16 opens a typed reference. The chosen verses are then fetched in the chosen translation.
+  let pick = null;
+  const MAX_VERSES = 30;
+  function trLabel(id) { const t = Bible.translation(id); return t ? t.id : id === "eng_kjv" ? "KJV" : id === "ENGWEBP" ? "WEB" : id; }
+  function currentTr() {
+    if (Bible.ready(set().tr)) return set().tr;
+    const t = Bible.TRANSLATIONS.find(x => Bible.ready(x.id));
+    return t ? t.id : "BSB";
   }
-  function chapterText(content, a, b) {
-    let out = "", count = 0;
-    content.forEach(item => {
-      if (item.type !== "verse" || (a && (item.number < a || item.number > b))) return;
-      count++;
-      item.content.forEach(c => {
-        if (typeof c === "string") out += (out && !/[\s\n]$/.test(out) ? " " : "") + c.trim();
-        else if (c && c.lineBreak) out += "\n";
-        else if (c && typeof c.text === "string") {
-          if (c.poem && out && !out.endsWith("\n")) out += "\n";
-          else if (out && !/[\s\n]$/.test(out)) out += " ";
-          out += c.text.trim();
-        }
-      });
-    });
-    out = out.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/[‘’](?=\s*$)/, "").trim();
-    return { text: out, count };
+  function trChips(sel, act) {
+    return '<div class="chips tr-chips" role="group" aria-label="Translation">' + Bible.TRANSLATIONS.map(t => {
+      const ok = Bible.ready(t.id);
+      return '<button class="chip' + (sel === t.id ? " on" : "") + (ok ? "" : " chip--off") + '" aria-pressed="' + (sel === t.id) + '" data-act="' + (act || "pick-tr") + '" data-v="' + t.id + '" aria-label="' + esc(t.name) + (ok ? "" : ", not set up yet") + '">' + t.id + "</button>";
+    }).join("") + "</div>";
   }
-  let addTab = "find", found = null;
-  function add() {
-    const tabs = '<div class="seg" role="tablist"><button role="tab" aria-selected="' + (addTab === "find") + '" data-act="add-tab" data-v="find">Find a verse</button>' +
-      '<button role="tab" aria-selected="' + (addTab === "own") + '" data-act="add-tab" data-v="own">Write your own</button></div>';
+  function fetchError(e, tr) {
+    const m = e && e.message;
+    if (m === "not-ready") return Bible.whyNot(tr);
+    if (m === "key") return "The YouVersion app key didn't work. Check it in config.js.";
+    if (m === "no-version") return "Your YouVersion app doesn't have the " + tr + " turned on yet. Add it in the YouVersion Platform portal.";
+    if (m === "not-found") return "Couldn't find that in the " + tr + ".";
+    if (m === "proxy") return "The " + tr + " server didn't answer. Try again in a minute.";
+    if (m === "gone") return "The " + tr + " isn't turned on for this app's API.Bible account.";
+    return "Couldn't reach the Bible. Check your connection and try again.";
+  }
+  function pickView() {
+    const parts = location.hash.replace(/^#/, "").split("/").map(decodeURIComponent);
+    const key = parts.slice(1).join("/");
+    if (!pick || pick.key !== key) {
+      pick = { key, kind: "verse" };
+      if (parts[1] === "verse" || parts[1] === "prayer") {
+        const e = (parts[1] === "verse" ? POPULAR : SCRIPTURE_PRAYERS)[+parts[2]];
+        if (e) Object.assign(pick, { kind: parts[1], title: e.title, about: e.about, from: e.from }, e.r);
+      } else if (parts[1] === "ref") {
+        const r = Bible.parseRef(parts.slice(2).join("/"));
+        if (r) Object.assign(pick, r);
+      }
+      if (pick.a) setTimeout(getPicked, 0);
+    }
+    const tr = currentTr();
     let body;
-    if (addTab === "find") {
-      body = '<div class="card"><label class="field"><span>Reference</span><input type="text" id="ref" placeholder="Romans 8:38–39" autocomplete="off" autocapitalize="words"></label>' +
-        '<label class="field"><span>Translation</span><select id="tr">' + TRANSLATIONS.map(([v, l]) => '<option value="' + v + '"' + (set().tr === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label>" +
-        '<button class="btn btn--primary" data-act="find">Find it</button><p class="fine">Needs an internet connection. These translations are free to use (public domain). For another translation, use <b>Write your own</b>.</p></div>' +
-        '<div id="found"></div>';
-    } else {
-      body = '<div class="card"><label class="field"><span>Name</span><input type="text" id="own-title" placeholder="Psalm 1 or Morning prayer" autocomplete="off"></label>' +
-        '<label class="field"><span>Reference or source (optional)</span><input type="text" id="own-ref" placeholder="ESV, my church\'s wording…" autocomplete="off"></label>' +
-        '<label class="field"><span>The words</span><textarea id="own-text" rows="8" placeholder="Paste or type it here. Put each phrase on its own line if you like."></textarea></label>' +
-        '<button class="btn btn--primary" data-act="save-own">Add it</button><p class="fine">Use any translation you own or your church\'s wording. It stays on this device.</p></div>';
-    }
-    return '<section class="view"><a class="back" href="#library">' + ICON.back + 'Library</a><h1 class="h1">Add</h1>' + tabs + body + "</section>";
+    if (pick.result || pick.loading || pick.error) body = previewHTML(tr);
+    else if (!pick.book) body = booksHTML();
+    else if (!pick.ch) body = chaptersHTML();
+    else body = versesHTML(tr);
+    const back = pick.result || pick.error ? "" : pick.ch ? '<button class="back" data-act="pick-back">' + ICON.back + esc(Bible.book(pick.book)[1]) + "</button>" :
+      pick.book ? '<button class="back" data-act="pick-back">' + ICON.back + "Books</button>" : '<a class="back" href="#library">' + ICON.back + "Library</a>";
+    return '<section class="view view--pick">' + back + '<h1 class="h1">' + (pick.kind === "prayer" ? "Add a prayer" : "Add a verse") + "</h1>" +
+      trChips(tr) + body + "</section>";
   }
-  async function findVerse() {
-    const raw = $("#ref").value, tr = $("#tr").value, box = $("#found");
-    const r = parseRef(raw);
-    if (!r) { box.innerHTML = '<p class="empty">Try a reference like <b>John 15:5</b> or <b>Psalm 1</b>.</p>'; return; }
-    box.innerHTML = '<p class="empty">Looking…</p>';
-    try {
-      const res = await fetch("https://bible.helloao.org/api/" + tr + "/" + r.book + "/" + r.ch + ".json");
-      if (!res.ok) throw new Error("not found");
-      const data = await res.json();
-      let { text, count } = chapterText(data.chapter.content, r.a, r.b);
-      if (!count) { box.innerHTML = '<p class="empty">Couldn\'t find that verse in this translation.</p>'; return; }
-      if (!r.a && count > 40) { box.innerHTML = '<p class="empty">That chapter is long. Try a range, like ' + esc(r.name) + " " + r.ch + ":1–12.</p>"; return; }
-      const ref = (r.book === "PSA" ? "Psalm" : r.name) + " " + r.ch + (r.a ? ":" + r.a + (r.b !== r.a ? "–" + r.b : "") : "");
-      found = { ref, text, tr };
-      box.innerHTML = '<div class="card"><p class="ref">' + esc(ref) + " · " + esc(trName(tr)) + '</p><div class="reading">' + esc(text).replace(/\n/g, "<br>") + "</div>" +
-        '<label class="field"><span>Name (optional)</span><input type="text" id="found-title" placeholder="' + esc(ref) + '"></label>' +
-        '<button class="btn btn--primary" data-act="save-found">Add to my list</button></div>';
-    } catch (e) {
-      box.innerHTML = '<p class="empty">Couldn\'t reach the Bible library. Check your connection, or paste the verse under <b>Write your own</b>.</p>';
+  function booksHTML() {
+    const grid = list => '<div class="bookgrid">' + list.map(b => '<button class="book" data-act="pick-book" data-v="' + b[0] + '">' + esc(b[1]) + "</button>").join("") + "</div>";
+    return '<label class="search"><span class="sr-only">Type a reference</span><input type="text" id="pick-ref" placeholder="Or type it: Romans 8:38–39" autocomplete="off" autocapitalize="words" enterkeyhint="go"></label>' +
+      '<p class="fine">Have it open in your Bible app? <a href="#paste">Paste it from there</a> in any translation.</p>' +
+      '<h2 class="h3">Old Testament</h2>' + grid(Bible.BOOKS.slice(0, Bible.OT)) + '<h2 class="h3">New Testament</h2>' + grid(Bible.BOOKS.slice(Bible.OT));
+  }
+  function chaptersHTML() {
+    const b = Bible.book(pick.book);
+    let s = '<h2 class="h3">' + esc(b[1]) + ': pick a chapter</h2><div class="chapgrid">';
+    for (let c = 1; c <= b[2]; c++) s += '<button class="chap" data-act="pick-ch" data-v="' + c + '">' + c + "</button>";
+    return s + "</div>";
+  }
+  // The verse list always comes from a free translation (the chosen one if it's free), so browsing
+  // never uses up the licensed translations' limits.
+  function listCode(tr) { const t = Bible.translation(tr); return t && t.source === "free" ? t.code : "BSB"; }
+  function versesHTML(tr) {
+    const code = listCode(tr), k = code + "/" + pick.book + "/" + pick.ch;
+    if (pick.listKey !== k) {
+      pick.listKey = k; pick.verses = null;
+      Bible.chapterVerses(code, pick.book, pick.ch).then(v => { if (pick && pick.listKey === k) { pick.verses = v; route(); } })
+        .catch(() => { if (pick && pick.listKey === k) { pick.verses = []; pick.listError = true; route(); } });
     }
+    const name = (pick.book === "PSA" ? "Psalm " : Bible.book(pick.book)[1] + " ") + pick.ch;
+    if (!pick.verses) return '<h2 class="h3">' + esc(name) + '</h2><p class="empty">Opening ' + esc(name) + "…</p>";
+    if (pick.listError) return '<p class="empty">Couldn\'t open that chapter. Check your connection.</p>';
+    const a = pick.a, b = pick.b || pick.a;
+    const shownTr = Bible.translation(tr).source === "free" ? "" : '<p class="fine">Shown in the BSB so you can choose. You\'ll get the ' + esc(tr) + ".</p>";
+    const sel = a ? Bible.refString({ book: pick.book, ch: pick.ch, a, b }) : "";
+    return '<h2 class="h3">' + esc(name) + ": tap the first verse, then the last</h2>" + shownTr +
+      '<ol class="verses">' + pick.verses.map(v => '<li><button class="verse-btn' + (a && v.n >= a && v.n <= b ? " on" : "") + '" data-act="pick-verse" data-v="' + v.n + '" aria-pressed="' + !!(a && v.n >= a && v.n <= b) + '"><b>' + v.n + "</b> " + esc(v.text).replace(/\n/g, " ") + "</button></li>").join("") + "</ol>" +
+      (a ? '<div class="pickbar"><span>' + esc(sel) + " · " + esc(tr) + '</span><button class="btn btn--primary" data-act="pick-get">Get it</button></div>' : "");
+  }
+  async function getPicked() {
+    if (!pick || !pick.a) return;
+    const tr = currentTr(), r = { book: pick.book, ch: pick.ch, a: pick.a, b: pick.b || pick.a };
+    if (r.b - r.a + 1 > MAX_VERSES) { toast("That's a lot to learn at once. Pick " + MAX_VERSES + " verses or fewer."); return; }
+    const mine = pick;
+    Object.assign(pick, { loading: true, error: null, result: null });
+    route();
+    try {
+      const res = await Bible.passage(tr, r);
+      if (mine.from && res.text.includes(mine.from)) res.text = res.text.slice(res.text.indexOf(mine.from));
+      Object.assign(mine, { loading: false, result: res });
+    } catch (e) {
+      Object.assign(mine, { loading: false, error: fetchError(e, tr) });
+    }
+    if (pick === mine) route();
+  }
+  function previewHTML(tr) {
+    const r = { book: pick.book, ch: pick.ch, a: pick.a, b: pick.b || pick.a };
+    if (pick.loading) return '<p class="empty">Getting ' + esc(Bible.refString(r)) + " in the " + esc(tr) + "…</p>";
+    if (pick.error) return '<div class="card card--soft"><p>' + esc(pick.error) + '</p><div class="btns"><button class="btn" data-act="pick-retry">Try again</button><button class="btn btn--quiet" data-act="pick-change">Choose different verses</button></div></div>';
+    const res = pick.result;
+    const t = Bible.translation(res.tr);
+    let over = "";
+    if (t && t.maxVerses) {
+      const stored = state.custom.filter(c => c.tr === res.tr).reduce((n, c) => n + (c.verses || 1), 0);
+      if (stored + res.verses > t.maxVerses) over = '<p class="fine">You already have ' + stored + " " + esc(res.tr) + " verses saved. The " + esc(res.tr) + "'s free license allows " + t.maxVerses + " on a device, so remove some or pick another translation.</p>";
+    }
+    if (res.fums) Bible.reportView(res.fums);
+    return '<div class="card"><p class="ref">' + esc(res.ref) + trCite(res) + "</p>" +
+      '<div class="reading">' + res.text.split("\n").map(l => '<p class="line">' + esc(l) + "</p>").join("") + "</div>" +
+      creditHTML(res.credit, res.tr) + "</div>" +
+      '<label class="field"><span>Name (optional)</span><input type="text" id="pick-title" value="' + esc(pick.title || "") + '" placeholder="' + esc(res.ref) + '" autocomplete="off"></label>' +
+      (over || '<button class="btn btn--primary btn--big" data-act="pick-save">' + (pick.kind === "prayer" ? "Add to my prayers" : "Add to my verses") + "</button>") +
+      '<button class="btn btn--quiet btn--wide" data-act="pick-change">Choose different verses</button>';
+  }
+
+  // ---------- pasting from the Bible App ----------
+  // Copy in the Bible App, paste here. Android can also share straight in (manifest share_target → ?text=…).
+  let pasted = null; // {raw, text, ref, r, tr, onlyLink, verses}
+  function pasteView() {
+    const p = pasted;
+    const trs = Bible.PASTE_TRS.concat(p && p.tr && !Bible.PASTE_TRS.includes(p.tr) ? [p.tr] : []);
+    let found = "";
+    if (p && p.onlyLink) found = '<div class="card card--soft"><p>Only a link came through, not the words. In the Bible App, tap the verse and choose <b>Copy</b>, then paste again.</p></div>';
+    else if (p && p.text) {
+      found = '<div class="card">' +
+        (p.ref ? "" : '<p class="fine">Couldn\'t find the reference. Type it in below.</p>') +
+        '<label class="field"><span>Reference</span><input type="text" id="paste-ref" value="' + esc(p.ref) + '" placeholder="John 3:16" autocomplete="off" autocapitalize="words"></label>' +
+        '<label class="field"><span>Translation</span><select id="paste-tr"><option value="">Not sure</option>' +
+        trs.map(t => '<option value="' + esc(t) + '"' + (p.tr === t ? " selected" : "") + ">" + esc(t) + "</option>").join("") + "</select></label>" +
+        '<label class="field"><span>The words</span><textarea id="paste-text" rows="8">' + esc(p.text) + "</textarea></label>" +
+        '<p class="fine">Check the words match your Bible. Put each phrase on its own line if you like.</p>' +
+        '<label class="field"><span>Name (optional)</span><input type="text" id="paste-title" placeholder="' + esc(p.ref || "John 3:16") + '" autocomplete="off"></label>' +
+        '<label class="field"><span>Is it a verse or a prayer?</span><select id="paste-kind"><option value="verse">A verse to memorize</option><option value="prayer">A prayer from Scripture</option></select></label>' +
+        '<button class="btn btn--primary btn--big" data-act="paste-save">Add it</button>' +
+        '<button class="btn btn--quiet btn--wide" data-act="paste-clear">Start over</button></div>';
+    }
+    return '<section class="view"><a class="back" href="#library">' + ICON.back + 'Library</a><h1 class="h1">Paste from your Bible app</h1>' +
+      (p && (p.text || p.onlyLink) ? "" :
+        '<ol class="steps"><li>In the Bible App (or bible.com), tap the verse. Tap more verses to include them.</li><li>Choose <b>Copy</b>.</li><li>Come back here and tap <b>Paste</b>.</li></ol>' +
+        ("clipboard" in navigator && navigator.clipboard.readText ? '<button class="btn btn--primary btn--big" data-act="paste-read">Paste</button>' : "") +
+        '<label class="field"><span>' + ("clipboard" in navigator && navigator.clipboard.readText ? "Or paste it here" : "Paste it here") + '</span><textarea id="paste-raw" rows="5" placeholder="Press and hold, then Paste"></textarea></label>' +
+        '<button class="btn btn--wide" data-act="paste-use">Use this</button>' +
+        '<p class="fine">Any translation works. The words are saved only on this device, for your own memorizing.</p>') +
+      found + "</section>";
+  }
+  function takePasted(raw) {
+    raw = String(raw || "").trim();
+    if (!raw) { toast("Nothing to paste yet. Copy a verse in your Bible app first."); return; }
+    pasted = Object.assign({ raw }, Bible.readPasted(raw));
+    if (!pasted.text && !pasted.onlyLink) pasted.text = raw;
+    if (location.hash === "#paste") route(); else go("#paste");
+  }
+
+  // ---------- writing your own ----------
+  function add() {
+    return '<section class="view"><a class="back" href="#library">' + ICON.back + 'Library</a><h1 class="h1">Write your own</h1>' +
+      '<div class="card"><label class="field"><span>Name</span><input type="text" id="own-title" placeholder="Morning prayer" autocomplete="off"></label>' +
+      '<label class="field"><span>The words</span><textarea id="own-text" rows="8" placeholder="Type or paste the prayer. Put each phrase on its own line if you like."></textarea></label>' +
+      '<label class="field"><span>Where it\'s from (optional)</span><input type="text" id="own-ref" placeholder="My church, a hymn, my own…" autocomplete="off"></label>' +
+      '<label class="field"><span>Is it a prayer or a verse?</span><select id="own-kind"><option value="prayer">A prayer</option><option value="verse">A Bible verse I typed in</option></select></label>' +
+      '<button class="btn btn--primary btn--big" data-act="save-own">Add it</button><p class="fine">It stays on this device.</p></div></section>';
   }
   function addCustom(o) {
     const id = "u-" + Date.now().toString(36);
-    state.custom.push(Object.assign({ id, custom: true, tags: [] }, o));
+    state.custom.push(Object.assign({ id, custom: true }, o));
     save();
     return id;
   }
@@ -511,8 +637,10 @@
       '<div class="card"><h2 class="h3">Your plan</h2>' + planEditor(false) +
       '<label class="field"><span>Reminder time</span><input type="time" id="plan-time" value="' + esc(state.plan.time) + '"></label>' +
       '<button class="btn" data-act="ics">Add a daily reminder to my calendar</button><p class="fine">Downloads a calendar event that repeats every day. Your calendar app does the reminding.</p></div>' +
-      '<div class="card"><h2 class="h3">Verses you add</h2>' + select("tr", "Translation", TRANSLATIONS) + "</div>" +
-      '<div class="card"><h2 class="h3">Backup</h2><p class="fine">Your progress lives only on this device. Save a backup now and then, especially before changing phones.</p>' +
+      '<div class="card"><h2 class="h3">Bible translation</h2>' + select("tr", "For verses you add", Bible.TRANSLATIONS.filter(t => Bible.ready(t.id)).map(t => [t.id, t.name + " (" + t.id + ")"])) +
+      '<ul class="tr-status">' + Bible.TRANSLATIONS.filter(t => !Bible.ready(t.id)).map(t => "<li><b>" + t.id + "</b> " + esc(Bible.whyNot(t.id)) + "</li>").join("") + "</ul></div>" +
+      '<div class="card"><h2 class="h3">Backup</h2><p class="fine">Your progress lives only on this device. Save a backup now and then, especially before changing phones.' +
+      (state.custom.some(Bible.licensed) ? " NKJV and CSB words aren't saved in backups (their license); they're fetched again after you restore." : "") + "</p>" +
       '<div class="btns"><button class="btn" data-act="backup-file">Download backup</button><button class="btn" data-act="backup-code">Copy backup code</button></div>' +
       '<label class="field"><span>Restore from a backup code or file</span><textarea id="restore" rows="3" placeholder="Paste a backup code"></textarea></label>' +
       '<div class="btns"><button class="btn" data-act="restore-code">Restore code</button><label class="btn">Choose file<input type="file" id="restore-file" accept=".json,application/json" hidden></label></div></div>' +
@@ -522,7 +650,7 @@
       "<li><b>Spaced reviews.</b> Reviews come back just before you'd forget, further apart each time (the FSRS scheduler).</li>" +
       "<li><b>Three good days.</b> A passage counts as memorized after you recall it on three different days.</li>" +
       "<li><b>Forgiving checks.</b> Spelling isn't memory, so small slips count as right.</li></ul></div>" +
-      '<div class="card"><h2 class="h3">About</h2><p class="fine">Scripture in the library is the Berean Standard Bible (public domain). Verses you find can come from the BSB, KJV, World English Bible or Douay-Rheims, all public domain, through the Free Use Bible API (bible.helloao.org). Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation.</p>' +
+      '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. NIV text comes through the YouVersion Platform, used by permission of Biblica, Inc. BSB, KJV and WEB are public domain, through the Free Use Bible API (bible.helloao.org). NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
       '<p class="fine">By Heart · Version ' + VERSION + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
   }
   function fillVoices() {
@@ -546,13 +674,18 @@
     const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
   }
-  function backupCode() { return btoa(unescape(encodeURIComponent(JSON.stringify(state)))); }
+  function backupJSON() {
+    const copy = JSON.parse(JSON.stringify(state));
+    copy.custom.forEach(c => { if (Bible.licensed(c)) { c.text = ""; c.fetched = 0; delete c.fums; } });
+    return JSON.stringify(copy);
+  }
+  function backupCode() { return btoa(unescape(encodeURIComponent(backupJSON()))); }
   function restore(json) {
     let s;
     try { s = typeof json === "string" ? JSON.parse(json) : json; } catch (e) { s = null; }
     if (!s || typeof s !== "object" || !s.settings) { toast("That doesn't look like a By Heart backup."); return; }
     if (!confirm("Replace what's on this device with the backup?")) return;
-    state = migrate(s); state.welcomed = true; save(); applyLook(); toast("Backup restored."); go("#today");
+    state = migrate(s); state.welcomed = true; save(); applyLook(); toast("Backup restored."); go("#today"); refreshLicensed();
   }
 
   // ---------- Welcome ----------
@@ -572,13 +705,16 @@
         '<div class="choices">' + HELPS.filter(h => h[0] !== "speak" || SR).map(([k, l]) => '<button class="choice' + (helps[k] ? " on" : "") + '" aria-pressed="' + !!helps[k] + '" data-act="help" data-v="' + k + '">' + l + "</button>").join("") + "</div>" +
         '<button class="btn btn--primary btn--big" data-act="welcome-next">Next</button></section>';
     }
-    const t = set().tradition;
-    const ids = ["v-psalm-119-11", "v-john-3-16", t === "catholic" ? "p-our-father" : "p-lords-prayer", "p-jesus-prayer", "v-psalm-23-1-6", "v-philippians-4-6-7"];
-    return '<section class="view view--welcome"><h1 class="h1">Pick your first one</h1><p>Start small. You can add more any time.</p>' +
-      '<div class="chips" role="group" aria-label="Your tradition">' + [["all", "Any church"], ["catholic", "Catholic"], ["orthodox", "Orthodox"], ["protestant", "Protestant"]].map(([v, l]) =>
-        '<button class="chip' + (t === v ? " on" : "") + '" aria-pressed="' + (t === v) + '" data-act="welcome-trad" data-v="' + v + '">' + l + "</button>").join("") + "</div>" +
-      '<ul class="rows">' + ids.map(item).filter(Boolean).map(it => '<li><button class="row" data-act="welcome-pick" data-id="' + it.id + '"><span class="row-main"><span class="row-title">' + esc(it.title) +
-        '</span><span class="row-sub">' + esc(it.ref) + " · " + wordCount(it) + " words</span></span></button></li>").join("") + "</ul>" +
+    const tr = currentTr();
+    const firsts = [["verse", 0], ["verse", 1], ["prayer-fixed", "p-lords-prayer"], ["verse", 4], ["verse", 3], ["verse", 2]];
+    return '<section class="view view--welcome"><h1 class="h1">Pick your first one</h1><p>Choose a translation, then start with something short. You can add any verse later.</p>' +
+      trChips(tr, "welcome-tr") +
+      '<ul class="rows">' + firsts.map(([k, v]) => {
+        if (k === "prayer-fixed") { const it = item(v); return '<li><button class="row" data-act="welcome-pick" data-id="' + it.id + '"><span class="row-main"><span class="row-title">' + esc(it.title) + '</span><span class="row-sub">' + esc(it.ref) + " · " + wordCount(it) + " words</span></span></button></li>"; }
+        const e = POPULAR[v];
+        return '<li><button class="row" data-act="welcome-verse" data-i="' + v + '"><span class="row-main"><span class="row-title">' + esc(e.title) + '</span><span class="row-sub">' + esc(Bible.refString(e.r)) + "</span></span></button></li>";
+      }).join("") + "</ul>" +
+      '<a class="btn btn--wide" href="#pick" data-act="welcome-done">Find another verse</a>' +
       '<button class="btn btn--quiet" data-act="welcome-browse">I\'ll look around first</button></section>';
   }
   function applyHelps() {
@@ -621,7 +757,7 @@
     return steps;
   }
   function startSession(tasks) {
-    tasks = tasks.filter(t => t && item(t.id));
+    tasks = tasks.filter(t => t && item(t.id) && item(t.id).text);
     if (!tasks.length) return;
     tasks.forEach(t => { if (t.kind === "learn") ensureProg(t.id); });
     save();
@@ -636,6 +772,7 @@
     if (S.ti >= S.tasks.length) { S.finished = true; return; }
     S.steps = S.plans[S.ti]; S.si = 0; S.hints = 0;
     if (!S.steps.length) { nextTask(); return; }
+    shown(curItem());
     beginStep();
   }
   function cur() { return S.steps[S.si]; }
@@ -693,7 +830,7 @@
       '<div class="p-top"><button class="icon-btn" data-act="exit" aria-label="Stop for now">' + ICON.close + "</button>" +
       '<div class="bar" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><span style="width:' + pct + '%"></span></div>' +
       (st.kind === "meet" ? '<span class="p-top-pad"></span>' : '<button class="chip" data-act="method-menu" aria-haspopup="true">' + esc(ml) + "</button>") + "</div>" +
-      '<div class="p-head"><p class="eyebrow">' + esc(eyebrow) + (S.tasks.length > 1 ? " · " + (S.ti + 1) + " of " + S.tasks.length : "") + '</p><h1 class="h2">' + esc(it.title) + '</h1><p class="ref">' + esc(it.ref) + '</p><p class="howto">' + esc(howto) + "</p></div>" +
+      '<div class="p-head"><p class="eyebrow">' + esc(eyebrow) + (S.tasks.length > 1 ? " · " + (S.ti + 1) + " of " + S.tasks.length : "") + '</p><h1 class="h2">' + esc(it.title) + '</h1><p class="ref">' + esc(it.ref) + trCite(it) + '</p><p class="howto">' + esc(howto) + "</p></div>" +
       '<div class="p-lines reading">' + S.lines.map((L, i) => lineHTML(L, i)).join("") + "</div>" +
       '<div class="p-controls">' + controlsHTML() + "</div>" +
       '<div id="method-menu" class="menu" hidden role="menu">' + methods().map(([v, l]) => '<button role="menuitemradio" aria-checked="' + (set().method === v) + '" data-act="method" data-v="' + v + '">' + l + "</button>").join("") + "</div>" +
@@ -729,16 +866,16 @@
   function controlsHTML() {
     const st = cur(), L = line(), m = set().method;
     if (st.kind === "meet") {
-      return '<div class="btns btns--center"><button class="btn" data-act="hear">' + ICON.speaker + 'Listen</button><button class="btn btn--primary btn--big" data-act="said">I said it</button></div>';
+      return '<div class="btns btns--center">' + hearBtn("Listen") + '<button class="btn btn--primary btn--big" data-act="said">I said it</button></div>';
     }
     if (L.done && !L.perfect) {
-      return '<p class="feedback">' + feedbackText(L) + '</p><div class="btns btns--center"><button class="btn" data-act="hear">' + ICON.speaker + "Hear it</button>" +
+      return '<p class="feedback">' + feedbackText(L) + '</p><div class="btns btns--center">' + hearBtn("Hear it") +
         (m === "speak" || m === "type" ? '<button class="btn" data-act="override">I had it right</button>' : "") + '<button class="btn btn--primary btn--big" data-act="next-line">Next</button></div>';
     }
     if (L.done) return '<p class="feedback feedback--good">All there.</p>';
     const hint = '<button class="btn" data-act="hint">Hint</button>';
     if (m === "say") {
-      if (L.revealed) return '<p class="feedback">Tap any words you missed or changed.</p><div class="btns btns--center"><button class="btn" data-act="hear">' + ICON.speaker + 'Hear it</button><button class="btn btn--primary btn--big" data-act="say-done">' + (L.marked && L.marked.some(Boolean) ? "Done" : "Got it all") + "</button></div>";
+      if (L.revealed) return '<p class="feedback">Tap any words you missed or changed.</p><div class="btns btns--center">' + hearBtn("Hear it") + '<button class="btn btn--primary btn--big" data-act="say-done">' + (L.marked && L.marked.some(Boolean) ? "Done" : "Got it all") + "</button></div>";
       return '<p class="fine center">Say it out loud or in your head, then check.</p><div class="btns btns--center">' + hint + '<button class="btn btn--primary btn--big" data-act="check">Check</button></div>';
     }
     if (m === "speak") {
@@ -770,7 +907,7 @@
     if (a && a.scrollIntoView) a.scrollIntoView({ block: "center", behavior: set().calm ? "auto" : "smooth" });
     const li = $("#letters"); if (li) li.focus({ preventScroll: true });
     const ty = $("#typed"); if (ty) ty.focus({ preventScroll: true });
-    if (cur().kind === "meet" && set().autoRead && !S.readThis) { S.readThis = true; hearLine(); }
+    if (cur().kind === "meet" && set().autoRead && !S.readThis && canHear(curItem())) { S.readThis = true; hearLine(); }
     if (set().method === "speak" && S.flow && !listening && !line().done && cur().kind !== "meet") startListening();
   }
 
@@ -878,6 +1015,7 @@
   // answering
   function hearLine() {
     const L = line();
+    if (!canHear(curItem())) return;
     const els = document.querySelectorAll('.pline.active .w');
     speak(L.tokens.map(t => t.t).join(" "), ci => {
       const wi = wordAt(L.tokens, ci);
@@ -988,6 +1126,32 @@
       '<div class="btns btns--center"><button class="btn btn--primary btn--big" data-act="listener-done" data-id="' + esc(id) + '">Finished</button></div></section>';
   }
 
+  // ---------- keeping NKJV and CSB text current ----------
+  // API.Bible's terms: check saved text at least every 30 days, show nothing older, and take it down when access
+  // ends. Passages are fetched again after 25 days (one call each); after 30 days without a refresh the words are hidden.
+  let refreshing = false;
+  async function refreshLicensed() {
+    let changed = false;
+    const busy = c => S && S.tasks.some(t => t.id === c.id);
+    state.custom.forEach(c => { if (c.text && Bible.expired(c) && !busy(c)) { c.text = ""; changed = true; } });
+    if (!refreshing && navigator.onLine !== false) {
+      refreshing = true;
+      for (const c of state.custom.filter(Bible.needsRefresh)) {
+        if (busy(c) || !Bible.ready(c.tr)) continue;
+        try {
+          const res = await Bible.passage(c.tr, c.r);
+          if (c.from && res.text.includes(c.from)) res.text = res.text.slice(res.text.indexOf(c.from));
+          Object.assign(c, { text: res.text, credit: res.credit, fums: res.fums, fetched: res.fetched });
+          changed = true;
+        } catch (e) {
+          if (e.message === "gone") { c.text = ""; changed = true; } else if (e.message !== "not-found") break; // offline or proxy down: later
+        }
+      }
+      refreshing = false;
+    }
+    if (changed) { save(); if (location.hash !== "#practice") route(); }
+  }
+
   // ---------- events ----------
   const ACTIONS = {
     start: () => startSession(todayTasks(false)),
@@ -1029,7 +1193,9 @@
       go("#item/" + encodeURIComponent(id));
     },
     "listen-all": el => {
-      const it = item(el.dataset.id), lines = document.querySelectorAll(".reading .line"), ph = phrasesOf(it);
+      const it = item(el.dataset.id);
+      if (!canHear(it)) return;
+      const lines = document.querySelectorAll(".reading .line"), ph = phrasesOf(it);
       let i = 0;
       const nextL = () => {
         lines.forEach(l => l.classList.remove("line--now"));
@@ -1041,7 +1207,7 @@
       };
       nextL();
     },
-    edit: el => { editing = el.dataset.id; route(); },
+    edit: el => { if (Bible.canEdit(item(el.dataset.id))) { editing = el.dataset.id; route(); } },
     "cancel-edit": () => { editing = null; route(); },
     "save-edit": el => {
       const id = el.dataset.id, it = item(id), v = $("#edit-text").value.trim();
@@ -1059,20 +1225,55 @@
     "reset-item": el => { if (confirm("Start this one over? Its progress will be cleared.")) { delete state.progress[el.dataset.id]; save(); route(); } },
     "remove-item": el => { if (confirm("Remove this from your list?")) { const id = el.dataset.id; state.custom = state.custom.filter(x => x.id !== id); delete state.progress[id]; save(); go("#library"); } },
     "lib-tab": el => { libTab = el.dataset.v; route(); },
-    tradition: el => { set().tradition = el.dataset.v; save(); route(); },
-    "add-tab": el => { addTab = el.dataset.v; route(); },
-    find: () => findVerse(),
-    "save-found": () => {
-      if (!found) return;
-      const title = ($("#found-title").value || "").trim() || found.ref;
-      const id = addCustom({ kind: "verse", title, ref: found.ref, tr: found.tr, text: found.text });
-      found = null; libTab = "mine"; go("#item/" + id);
+    "pick-tr": el => {
+      const v = el.dataset.v;
+      if (!Bible.ready(v)) { toast(Bible.whyNot(v)); return; }
+      set().tr = v; save();
+      if (pick && (pick.result || pick.error)) getPicked(); else route();
+    },
+    "pick-book": el => { pick.book = el.dataset.v; pick.ch = null; pick.a = pick.b = null; route(); $(".scroller").scrollTop = 0; },
+    "pick-ch": el => { pick.ch = +el.dataset.v; pick.a = pick.b = null; route(); $(".scroller").scrollTop = 0; },
+    "pick-back": () => { if (pick.ch) { pick.ch = null; pick.a = pick.b = null; } else pick.book = null; route(); },
+    "pick-verse": el => {
+      const n = +el.dataset.v;
+      if (!pick.a || (pick.b && pick.b !== pick.a) || n < pick.a) { pick.a = n; pick.b = n; }
+      else pick.b = n;
+      const top = $(".scroller").scrollTop; route(); $(".scroller").scrollTop = top;
+    },
+    "pick-get": () => getPicked(),
+    "pick-retry": () => getPicked(),
+    "pick-change": () => { Object.assign(pick, { result: null, error: null, loading: false }); route(); },
+    "pick-save": () => {
+      const res = pick.result; if (!res) return;
+      const title = ($("#pick-title").value || "").trim() || res.ref;
+      const id = addCustom({ kind: pick.kind, title, about: pick.about, ref: res.ref, tr: res.tr, text: res.text, credit: res.credit,
+        r: { book: pick.book, ch: pick.ch, a: pick.a, b: pick.b || pick.a }, verses: res.verses, from: pick.from, fums: res.fums, fetched: res.fetched });
+      libTab = pick.kind === "prayer" ? "prayer" : "verse"; pick = null; go("#item/" + id);
+    },
+    "paste-read": async () => {
+      try { takePasted(await navigator.clipboard.readText()); }
+      catch (e) { const t = $("#paste-raw"); if (t) t.focus(); toast("Press and hold in the box, then choose Paste."); }
+    },
+    "paste-clear": () => { pasted = null; route(); },
+    "paste-use": () => takePasted(($("#paste-raw") || {}).value),
+    "paste-save": () => {
+      const text = $("#paste-text").value.trim();
+      if (!text) { toast("Add the words first."); return; }
+      const refIn = $("#paste-ref").value.trim(), r = Bible.parseRef(refIn.replace(/\s*[,–-].*$/, ""));
+      const last = Number((refIn.match(/[-–,]\s*(\d+)\s*$/) || [])[1]);
+      const rr = r && r.a ? Object.assign({}, r, { b: Math.max(r.a, last || r.a) }) : null;
+      const ref = rr && !/,/.test(refIn) ? Bible.refString(rr) : refIn || "Your Bible";
+      const kind = $("#paste-kind").value === "prayer" ? "prayer" : "verse";
+      const id = addCustom({ kind, title: $("#paste-title").value.trim() || ref, ref, tr: $("#paste-tr").value, text, src: "paste",
+        r: rr || undefined, verses: rr ? rr.b - rr.a + 1 : 1 });
+      pasted = null; libTab = kind; go("#item/" + id);
     },
     "save-own": () => {
       const title = $("#own-title").value.trim(), text = $("#own-text").value.trim();
       if (!title || !text) { toast("Add a name and the words."); return; }
-      const id = addCustom({ kind: "prayer", title, ref: $("#own-ref").value.trim() || "Your own", text });
-      libTab = "mine"; go("#item/" + id);
+      const kind = $("#own-kind").value === "verse" ? "verse" : "prayer";
+      const id = addCustom({ kind, title, ref: $("#own-ref").value.trim() || "Your own", text });
+      libTab = kind; go("#item/" + id);
     },
     anchor: el => { const a = $("#anchor"); if (a) a.value = el.dataset.v; },
     "save-plan": () => { const v = ($("#anchor").value || "").trim().replace(/[.,]+$/, ""); if (!v) { toast("Add something you already do every day."); return; } state.plan.anchor = v; save(); toast("Saved. After you " + v + ", open By Heart."); route(); },
@@ -1081,7 +1282,7 @@
     "dismiss-install": () => { state.installDismissed = true; save(); route(); },
     "test-voice": () => speak("The LORD is my shepherd; I shall not want."),
     ics: () => { const t = $("#plan-time"); if (t) { state.plan.time = t.value || "07:30"; save(); } download("by-heart-reminder.ics", "text/calendar", icsFile()); },
-    "backup-file": () => download("by-heart-backup-" + M.today() + ".json", "application/json", JSON.stringify(state)),
+    "backup-file": () => download("by-heart-backup-" + M.today() + ".json", "application/json", backupJSON()),
     "backup-code": async () => {
       const code = backupCode();
       try { await navigator.clipboard.writeText(code); toast("Backup code copied. Paste it somewhere safe, like a note or an email to yourself."); }
@@ -1095,7 +1296,17 @@
     "start-over": () => { if (confirm("Erase all progress, settings and added verses on this device?") && confirm("This can't be undone. Erase everything?")) { state = fresh(); save(); applyLook(); welcomeStep = 0; helps = {}; go("#welcome"); } },
     "welcome-next": () => { if (welcomeStep === 1) applyHelps(); welcomeStep++; save(); route(); },
     help: el => { helps[el.dataset.v] = !helps[el.dataset.v]; route(); },
-    "welcome-trad": el => { set().tradition = el.dataset.v; save(); route(); },
+    "welcome-tr": el => { if (!Bible.ready(el.dataset.v)) { toast(Bible.whyNot(el.dataset.v)); return; } set().tr = el.dataset.v; save(); route(); },
+    "welcome-verse": async el => {
+      const e = POPULAR[+el.dataset.i], tr = currentTr();
+      el.disabled = true; toast("Getting " + Bible.refString(e.r) + "…");
+      try {
+        const res = await Bible.passage(tr, e.r);
+        const id = addCustom({ kind: "verse", title: e.title, about: e.about, ref: res.ref, tr: res.tr, text: res.text, credit: res.credit, r: e.r, verses: res.verses, fums: res.fums, fetched: res.fetched });
+        state.welcomed = true; save(); startSession([{ kind: "learn", id }]);
+      } catch (err) { el.disabled = false; toast(fetchError(err, tr)); }
+    },
+    "welcome-done": () => { state.welcomed = true; save(); go("#pick"); },
     "welcome-pick": el => { state.welcomed = true; save(); startSession([{ kind: "learn", id: el.dataset.id }]); },
     "welcome-browse": () => { state.welcomed = true; save(); go("#library"); },
   };
@@ -1122,6 +1333,7 @@
       if (out) out.textContent = (FMT[k] || (v => v))(+el.value);
     }
   });
+  document.addEventListener("paste", e => { if (e.target.id === "paste-raw") setTimeout(() => takePasted(e.target.value), 0); });
   document.addEventListener("change", e => {
     const el = e.target;
     if (el.id === "restore-file" && el.files && el.files[0]) { el.files[0].text().then(restore); return; }
@@ -1135,16 +1347,34 @@
     if (k === "weekGoal") route();
   });
   document.addEventListener("keydown", e => {
-    if (e.key === "Enter" && e.target.id === "ref") { e.preventDefault(); findVerse(); }
+    if (e.key === "Enter" && e.target.id === "lib-q") { const r = Bible.parseRef(e.target.value); if (r) { e.preventDefault(); go("#pick/ref/" + encodeURIComponent(e.target.value.trim())); } }
+    if (e.key === "Enter" && e.target.id === "pick-ref") {
+      e.preventDefault();
+      const r = Bible.parseRef(e.target.value);
+      if (!r) { toast("Try a reference like John 15:5 or Psalm 23:1–3."); return; }
+      Object.assign(pick, r, { a: r.a, b: r.b });
+      if (r.a) getPicked(); else route();
+    }
     if (e.key === "Enter" && e.target.id === "typed" && !e.shiftKey) { e.preventDefault(); ACTIONS["type-check"](); }
   });
   window.addEventListener("hashchange", route);
-  document.addEventListener("visibilitychange", () => { if (document.hidden) { stopListening(); stopSpeaking(); } });
+  window.addEventListener("online", refreshLicensed);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { stopListening(); stopSpeaking(); } else refreshLicensed(); });
 
-  const VIEWS = { today, library, item: itemView, add, progress, settings, welcome, practice, listen };
+  const VIEWS = { today, library, item: itemView, add, pick: pickView, paste: pasteView, progress, settings, welcome, practice, listen, copyright };
   const VERSION = document.documentElement.dataset.version || "dev";
+  // Shared from another app on Android (manifest share_target): open the Paste screen with it.
+  const shared = new URLSearchParams(location.search);
+  if (shared.get("text") || shared.get("url")) {
+    const raw = [shared.get("text"), shared.get("url")].filter(Boolean).join("\n");
+    pasted = Object.assign({ raw }, Bible.readPasted(raw));
+    if (!pasted.text && !pasted.onlyLink) pasted.text = raw;
+    state.welcomed = true; save();
+    history.replaceState(null, "", location.pathname + "#paste");
+  }
   applyLook();
   route();
+  refreshLicensed();
   // offline support; skipped on localhost so edits show up while previewing (add ?sw to test it)
   const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && !/[?&]sw\b/.test(location.search);
   if ("serviceWorker" in navigator && location.protocol !== "file:" && !local) {

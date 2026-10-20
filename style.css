@@ -275,3 +275,31 @@ button.w--marked { border-bottom-color: var(--warn-ink); }
 @media (min-width: 700px) {
   main { padding-top: 28px; }
 }
+
+/* picking a verse */
+.tr-chips { gap: 6px; margin: 0 0 16px; }
+.tr-chips .chip { min-width: 58px; justify-content: center; letter-spacing: .03em; }
+.chip--off { opacity: .45; border-style: dashed; }
+.pill--add { background: transparent; border: 1.5px solid var(--line); color: var(--accent); }
+.bookgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; margin: 0 0 18px; }
+.book { min-height: 48px; padding: 6px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-weight: 600; font-size: 15px; cursor: pointer; text-align: center; }
+.chapgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; margin: 0 0 18px; }
+.chap { min-height: 52px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-weight: 650; font-size: 17px; cursor: pointer; }
+.verses { list-style: none; margin: 0 0 90px; padding: 0; }
+.verses li + li { margin-top: 4px; }
+.verse-btn {
+  display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1.5px solid transparent; background: transparent;
+  font-family: var(--read-font); font-size: calc(var(--read-size) * .8); line-height: 1.5; letter-spacing: var(--read-ls); word-spacing: var(--read-ws); cursor: pointer;
+}
+.verse-btn b { color: var(--muted); font-family: var(--ui-font); font-size: .8em; margin-right: 4px; }
+.verse-btn.on { background: var(--card); border-color: var(--accent); }
+.pickbar {
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 calc(-1 * var(--gutter)); padding: 10px var(--gutter) calc(env(safe-area-inset-bottom) + 10px); background: var(--bg); border-top: 1px solid var(--line); font-weight: 650;
+}
+.view--pick .verses + .pickbar { margin-top: -80px; }
+.tr-status { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
+.tr-status li + li { margin-top: 4px; }
+button.back { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.steps { padding-left: 22px; margin: 0 0 14px; }
+.steps li + li { margin-top: 6px; }

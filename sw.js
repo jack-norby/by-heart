@@ -1,10 +1,10 @@
 // By Heart: offline support. The app shell is cached on install; bump VERSION (with the ?v= in
 // index.html) on every release so phones pick up the new files.
-const VERSION = "202610192330";
+const VERSION = "202610201148";
 const CACHE = "byheart-" + VERSION;
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png",
-  "style.css?v=" + VERSION, "library.js?v=" + VERSION, "words.js?v=" + VERSION, "memory.js?v=" + VERSION, "app.js?v=" + VERSION,
+  "style.css?v=" + VERSION, "config.js?v=" + VERSION, "bible.js?v=" + VERSION, "library.js?v=" + VERSION, "words.js?v=" + VERSION, "memory.js?v=" + VERSION, "app.js?v=" + VERSION,
 ];
 
 self.addEventListener("install", e => {
@@ -26,6 +26,7 @@ self.addEventListener("fetch", e => {
     return;
   }
   if (url.origin !== location.origin) return; // Bible lookups always go to the network
+  if (url.pathname.endsWith("/config.js")) { e.respondWith(fetch(req).catch(() => caches.match(req))); return; } // keys can change between releases
   if (req.mode === "navigate") {
     e.respondWith(fetch(req).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); return res; })
       .catch(() => caches.match("index.html")));

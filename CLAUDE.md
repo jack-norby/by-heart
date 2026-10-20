@@ -2,14 +2,17 @@
 
 "I have hidden Your word in my heart." (Psalm 119:11)
 
-By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing Bible verses and common prayers. It installs to a phone's Home Screen and works offline. It's built for every kind of learner, including people with dyslexia, ADHD, autism, motor or hearing differences, and older adults, based on a research report the owner commissioned ("Scripture memorization for diverse learners"). The owner also made Iron (`~/Desktop/iron`) and publishes both on GitHub Pages under `jack-norby.github.io`.
+By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing Bible verses and common prayers. It installs to a phone's Home Screen and works offline. The owner is Protestant: the library has Protestant prayers and creeds only, and the main flow is picking any verse in the translation you want. It's built for every kind of learner, including people with dyslexia, ADHD, autism, motor or hearing differences, and older adults, based on a research report the owner commissioned ("Scripture memorization for diverse learners"). The owner also made Iron (`~/Desktop/iron`) and publishes both on GitHub Pages under `jack-norby.github.io`.
 
 ## Files (one flat folder, so drag-and-drop uploads to GitHub keep working)
 - `index.html`: the shell. Header, `.scroller` with `main`, bottom tab bar, toast, live region. Sets the theme before first paint.
 - `app.js`: all screens (Welcome, Today, Library, item page, Add, Progress, Settings, practice session, "Say it to someone") and saved state.
 - `words.js`: splitting text into lines/phrases, cue rendering helpers, forgiving answer checking (word alignment, spelling slips, sound-alike words, numbers).
 - `memory.js`: scheduling. FSRS-4.5 default weights plus the "three good days" ladder.
-- `library.js`: the starter library (36 BSB passages, 17 prayers/creeds/catechism answers), each with a plain-language "What it means" note. Generated once from bible.helloao.org; edit by hand now.
+- `bible.js`: the 66 books (with chapter counts), the translations, reference parsing, and fetching a passage from each source (see Translations below).
+- `config.js`: the YouVersion app key (NIV) and the proxy addresses (`esvProxy`, `apiBibleProxy`; usually the same Worker). Empty means "not set up yet".
+- `library.js`: `POPULAR` verses and `SCRIPTURE_PRAYERS` (references plus a title and "What it means" note; the words are fetched in the chosen translation) and `PRAYERS` (Protestant prayers, creeds and catechism answers with fixed traditional wording).
+- `../esv-proxy/`: a Cloudflare Worker that holds the ESV and API.Bible keys (`/passage` for the ESV, `/bible` for NKJV and CSB). Not part of the website upload.
 - `style.css`: the whole design. Theme tokens at the top (cream default, light, mist, oxblood, night).
 - `sw.js`: offline cache. `manifest.webmanifest` + icons (`icon-192/512.png`, `apple-touch-icon.png`, `favicon-32.png`, `favicon.svg`: a cream heart with a cross cut out, on oxblood #7a2e2e).
 
@@ -24,17 +27,41 @@ By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing B
 
 ## Data
 - localStorage key `byheart-v1`: `{ settings, plan, progress: {id: {stage: learning|practicing|memorized, learned, s, d, due, last, good, refresh, reps, lapses, history}}, custom: [items], edits: {id: {text}}, days: {"YYYY-MM-DD": {s: steps, r: reviews}}, welcomed }`.
-- Backups: download a JSON file or copy a base64 backup code (Settings).
+- Every verse someone adds is a `custom` item: `{id, custom, kind: verse|prayer, title, ref, tr, text, credit, about, r: {book, ch, a, b}, verses}`. The text is saved on the device so practice works offline. NKJV and CSB items also keep `fums` (the FUMS token), `fetched` (ms timestamp) and `from` (where a Scripture prayer starts). An empty `text` means "waiting for a refresh": the item stays, with its progress, but is left out of practice.
+- `byheart-fums` holds FUMS view reports made offline, sent when the app is next online.
+- `byheart-yv` caches the YouVersion version id and copyright line per translation.
+- Backups: download a JSON file or copy a base64 backup code (Settings). NKJV and CSB words are left out and fetched again after a restore.
 - Editing a passage's words clears its progress (after a confirm).
 
+## Translations
+The picker offers ESV, NIV, NKJV, CSB first (the owner's picks), then the free BSB, KJV and WEB. Browsing chapters always uses a free translation (BSB unless a free one is chosen), so licensed sources are only asked when someone adds a passage.
+- **BSB, KJV, WEB:** Free Use Bible API (bible.helloao.org), public domain, no key, CORS open.
+- **NIV:** YouVersion Platform (api.youversion.com, CORS open). Needs a free app key in `config.js` and the NIV turned on for that app in the portal. The app looks up the version id by abbreviation and keeps the version's copyright line. Untested against the live API (no key yet): check the passage text format the first time.
+- **ESV:** Crossway's ESV API through `../esv-proxy` (the key must not be published). Free for non-commercial use only (no ads, sales or donations); show "ESV", Crossway's copyright line and an esv.org link; at most 500 ESV verses stored per device (the app enforces this).
+- **NKJV, CSB:** API.Bible (rest.api.bible) through the proxy's `/bible?tr=NKJV&ref=JHN.3.16-JHN.3.18` route. They aren't on YouVersion Platform (as of Oct 2026). Free Starter plan (checked Oct 20, 2026 against the terms dated Sept. 3, 2026): non-commercial only, up to 3 licensed Bibles, 5,000 calls a month for the whole app, and the NKJV only while the app has 5,000 or fewer monthly users. The Worker finds each Bible's ID by abbreviation (CSB is `a556c5305ee15c3f-01` per the docs; the NKJV ID isn't published) and passes back the text, API.Bible's copyright line and the FUMS token. Untested against the live API (no key yet): check the text format the first time. What the terms require, and where the app does it:
+  - **FUMS** (required for web apps): `Bible.reportView(token)` loads pkg.api.bible/fumsV3.min.js only when NKJV/CSB text is shown and calls `fums("trackView", ...)`. It runs on the item page, the "Say it to someone" screen, the add-a-verse preview, and the start of each practice passage, at most once per screen per 10 minutes.
+  - **30-day recency:** `refreshLicensed()` in app.js fetches saved passages again after 25 days (on start, on `online`, and when the app comes back to the foreground). It hides the words after 30 days without a refresh, and removes them when the proxy answers 410 (Bible no longer licensed).
+  - **Text only:** no text-to-speech for copyrighted text, so there are no Listen/Hear it buttons and no auto-read for these (`speech: false`). The words can't be edited (`editable: false`).
+  - **Citations:** the abbreviation after the reference links to `#copyright`, a page with each translation's full notice, the publisher's site and a link to api.bible (the Starter plan must show one). The credit line under the text links there too.
+  - Fewer than 500 verses cached: `maxVerses: 499` per device. The key never goes in the website files. Not done: DRM. The terms' section 12 asks for "industry-standard DRM"; a web app can't really do that, so backups just leave the words out. Ask API.Bible if this matters.
+- Never put an ESV or API.Bible key in the website files. Changing what the app does with NKJV/CSB text? Re-read api.bible/terms-and-conditions first (sections 7, 9, 11, 12, 14).
+
+## Pasting from the Bible App
+- Library → "Paste from your Bible app" (`#paste`). The person copies verses in the YouVersion Bible App (or bible.com) and pastes; `Bible.readPasted` finds the reference, the translation (from "John 3:16 ESV" or the bible.com link's version number) and the words. It strips the invisible marks the app puts around dashes and the verse numbers between verses. The exact copy format isn't documented, so everything is shown in editable fields before saving.
+- Android can share straight in: `share_target` in the manifest opens `index.html?text=…&url=…`, which goes to `#paste`. iPhones only allow copy and paste for web apps.
+- Pasted items have `src: "paste"`. They're the person's own copy for personal memorizing, so API.Bible's rules (no reading aloud, no editing, FUMS, 30-day refresh) never apply to them, even for NKJV or CSB. `Bible.licensed(item)` checks `src`, so pass the item, not just its translation.
+- Don't fetch or scrape text from the Bible App or bible.com in code: that's against YouVersion's terms and the publishers' copyright.
+
 ## Content rules
-- Starter Scripture is the Berean Standard Bible (public domain). "Find a verse" uses the Free Use Bible API (bible.helloao.org, CORS open) with BSB, KJV, WEB and Douay-Rheims, all public domain. Don't add ESV/NIV text: their licenses don't fit (ESV API is non-commercial with storage caps; NIV's free license bans AI features). People can paste their own translation under "Write your own".
-- Prayers use traditional public-domain wording. The ELLC Apostles' and Nicene Creeds carry the ELLC credit line. Wording varies by church, so every item can be edited to match.
+- Protestant only (the owner's choice): no Hail Mary, Rosary, Orthodox prayers or saint devotions.
+- Prayers use traditional public-domain wording (Luther's prayers are the 1921 Triglot translation). The ELLC Apostles' and Nicene Creeds carry the ELLC credit line. Wording varies by church, so every item can be edited to match.
+- Anyone can write their own prayer (or type in a verse) under "Write your own".
 - Plain, gentle language. No "brother/guys/he" for the user, no pathologizing words, no exclamation-mark hype.
 
 ## Working on it
 - Preview: `python3 -m http.server` in this folder, then open http://localhost:8000. The service worker is skipped on localhost so edits show up; add `?sw` to the address to test offline mode.
 - Check phone width (about 375px) for horizontal overflow and the console for errors.
+- Python can't read the Desktop folder (macOS privacy), so the preview serves a copy. Copy the folder somewhere outside Desktop/Documents first, or allow Terminal Full Disk Access.
 - `window.ByHeart` in the console exposes `state()`, `session()`, `Words` and `Memory` for debugging.
 - **Release:** bump the version everywhere at once (the `?v=` strings, `data-version`, and `VERSION` in sw.js), or phones keep the old cached copy:
   `NEW=$(date +%Y%m%d%H%M); sed -i '' -E "s/[0-9]{12}/$NEW/g" index.html sw.js`

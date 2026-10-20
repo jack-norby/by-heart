@@ -5,14 +5,21 @@ Learn Scripture and prayers by heart, a few minutes at a time.
 By Heart is a free web app you can add to your phone's Home Screen. It works offline and keeps everything on your device. It's designed for every kind of learner, including people with dyslexia, ADHD and other learning differences.
 
 ## What it does
+- **Any verse, your translation.** Pick a book, a chapter, then the verses, or type a reference like John 15:5. ESV, NIV, NKJV and CSB once they're set up (see below), plus the free BSB, KJV and WEB.
+- **Paste from your Bible app.** Copy verses in the YouVersion Bible App, in any translation, and paste them in. By Heart reads the reference and translation for you. On Android you can also share straight to By Heart.
 - **A line at a time.** Read a line out loud, then say it with some words blank, then with first letters, then from memory. Slip up and the help comes back.
 - **Reviews at the right time.** Passages come back just before you'd forget, further apart each time. Recall one on three different days and it's memorized.
 - **Answer your way.** Say it and check yourself, speak into the microphone, tap the words in order, type first letters, or type it out. Spelling slips count as right.
-- **Hear it.** Every line can be read aloud, with words highlighted as they're spoken.
+- **Hear it.** Every line can be read aloud, with words highlighted as they're spoken (not NKJV or CSB, whose license doesn't allow it).
 - **Make it readable.** Text size, letter and word spacing, line spacing, fonts (including Atkinson Hyperlegible and Lexend) and five color themes.
-- **Library.** 36 well-known passages (Berean Standard Bible) and common prayers, creeds and catechism answers, each with a short note on what it means. Find any verse in the BSB, KJV, WEB or Douay-Rheims, or paste your own translation or your church's wording.
+- **Prayers.** The Lord's Prayer, the Apostles' and Nicene Creeds, the Doxology, the Serenity Prayer, Luther's morning and evening prayers, Wesley's Covenant Prayer, table and bedtime prayers, catechism answers, and prayers straight from Scripture. Or write your own.
 - **Habits without guilt.** A weekly goal instead of streaks, a one-minute option, an "After I…, I'll open By Heart" plan, and a calendar reminder.
 - **Say it to someone.** Hand your phone to a friend and they tap any words you miss.
+
+## Setting up the translations
+- **NIV:** sign up at [platform.youversion.com](https://platform.youversion.com), create an app, turn on the NIV, and paste the app key into `config.js`.
+- **ESV:** follow `../esv-proxy/README.md` (an ESV API key plus a free Cloudflare Worker), then put the Worker's address in `config.js`.
+- **NKJV and CSB:** make a free API.Bible Starter account, add the NKJV and CSB, and put the key on the same proxy (see `../esv-proxy/README.md`). Then put the proxy's address in `config.js` as `apiBibleProxy`. Their license doesn't allow reading the words aloud or changing them, and the app re-checks saved passages every few weeks. The NKJV is free only while By Heart has 5,000 or fewer users a month.
 
 ## Install on a phone
 - **iPhone:** open the site in Safari, tap Share, then **Add to Home Screen**.
@@ -22,4 +29,4 @@ By Heart is a free web app you can add to your phone's Home Screen. It works off
 Upload every file in this folder to a GitHub repository named `by-heart`, then turn on GitHub Pages (Settings → Pages → Deploy from branch → main). It will be at `https://jack-norby.github.io/by-heart/`.
 
 ## Credits
-Scripture: Berean Standard Bible (public domain). Verse lookup: Free Use Bible API (bible.helloao.org). ELLC creeds © 1988 English Language Liturgical Consultation. Scheduling: FSRS (open-spaced-repetition).
+Scripture: ESV (Crossway), NIV (Biblica, through YouVersion Platform), NKJV (Thomas Nelson) and CSB (Holman Bible Publishers) through [API.Bible](https://api.bible), BSB, KJV and WEB (public domain, through the Free Use Bible API). Full notices are on the app's Copyright page (Settings → About). ELLC creeds © 1988 English Language Liturgical Consultation. Scheduling: FSRS (open-spaced-repetition).
