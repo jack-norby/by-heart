@@ -635,6 +635,8 @@
   let lastUid = null;
   function accountChanged(A) {
     const uid = A.user ? A.user.uid : null, here = location.hash;
+    // signed in after all (the account finished loading): skip the welcome for someone already set up
+    if (uid && here === "#welcome" && state.welcomed && welcomeStep === 0) { lastUid = uid; go("#today"); return; }
     const stale = uid !== lastUid || !$("#account") || (A.loaded && !A.user && !$("#acct-email"));
     lastUid = uid;
     if (here === "#settings" && stale) route(); // signed in or out, or sign-in just finished loading
@@ -1458,8 +1460,12 @@
   }
   // The welcome greets anyone who isn't signed in each time the app opens; signed-in people go straight in.
   // Firebase restores a sign-in a moment after load, so account.js leaves a hint for this check.
+  // No hint yet (first launch after this was added): a phone that has synced with an account counts as signed in.
   let signedInHint = false;
-  try { signedInHint = localStorage.getItem("byheart-signedin") === "1"; } catch (e) { /* treat as signed out */ }
+  try {
+    const hint = localStorage.getItem("byheart-signedin");
+    signedInHint = hint === "1" || (hint === null && !!state.account);
+  } catch (e) { /* treat as signed out */ }
   if (!signedInHint && !/^#(welcome|paste|pick|item|listen)/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + "#welcome");
   applyLook();
   route();
