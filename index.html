@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en" data-version="202610192330">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>By Heart</title>
+<meta name="description" content="Learn Scripture and prayers by heart, a few minutes at a time. Built for every kind of learner.">
+<meta name="theme-color" content="#f6f1e4">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="By Heart">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<!-- link previews. The address must be the live site's. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="By Heart">
+<meta property="og:title" content="By Heart">
+<meta property="og:description" content="Learn Scripture and prayers by heart, a few minutes at a time.">
+<meta property="og:url" content="https://jack-norby.github.io/by-heart/">
+<meta property="og:image" content="https://jack-norby.github.io/by-heart/icon-512.png">
+<link rel="stylesheet" href="style.css?v=202610192330">
+<script>
+  // set colors before first paint so there's no flash
+  try { var s = JSON.parse(localStorage.getItem("byheart-v1") || "{}").settings || {}; var t = s.theme || "auto";
+    if (t === "auto") t = matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "cream";
+    document.documentElement.dataset.theme = t; } catch (e) { document.documentElement.dataset.theme = "cream"; }
+</script>
+</head>
+<body>
+<svg class="defs" aria-hidden="true" focusable="false">
+  <symbol id="mark" viewBox="0 0 100 100"><path d="M50 88C47 85 12 62 12 36C12 22 22 13 33 13C41 13 47 18 50 24C53 18 59 13 67 13C78 13 88 22 88 36C88 62 53 85 50 88Z" fill="currentColor"/><path d="M46 30H54V43H66V51H54V72H46V51H34V43H46Z" fill="var(--mark-cut, #fff)"/></symbol>
+</svg>
+
+<header class="site-header">
+  <a class="brand" href="#today"><svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>By Heart</a>
+</header>
+
+<div class="scroller">
+  <main id="main" tabindex="-1"></main>
+</div>
+
+<nav class="tabbar" aria-label="Sections">
+  <a href="#today" data-tab="today"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Today</a>
+  <a href="#library" data-tab="library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C10 5 7 4.5 3.5 4.8v13.5c3.5-.3 6.5.2 8.5 1.7 2-1.5 5-2 8.5-1.7V4.8C17 4.5 14 5 12 6.5zM12 6.5V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Library</a>
+  <a href="#progress" data-tab="progress"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13M10 20V8M16 20v-5M22 20H2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Progress</a>
+  <a href="#settings" data-tab="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/></svg>Settings</a>
+</nav>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<p id="live" class="sr-only" aria-live="polite"></p>
+
+<noscript><p class="noscript">By Heart needs JavaScript turned on.</p></noscript>
+<script src="library.js?v=202610192330"></script>
+<script src="words.js?v=202610192330"></script>
+<script src="memory.js?v=202610192330"></script>
+<script src="app.js?v=202610192330"></script>
+</body>
+</html>
