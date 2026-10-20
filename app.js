@@ -257,6 +257,7 @@
 
   // ---------- Today ----------
   function isStandalone() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
+  function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
   let installEvent = null;
   window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvent = e; });
   function today() {
@@ -626,6 +627,7 @@
     if (!A.loaded) return '<div class="card" id="account"><h2 class="h3">Account</h2><p class="fine">' + esc(A.status || "Loading sign-in…") + "</p></div>";
     return '<div class="card" id="account"><h2 class="h3">Account</h2><p>Sign in to keep your verses, prayers and progress on every device. It\'s optional: without it, everything stays on this phone.</p>' +
       '<button class="btn btn--primary btn--wide" data-act="acct-google">Continue with Google</button>' +
+      (isStandalone() && isIOS() ? '<p class="fine">On iPhone, Google sign-in sometimes doesn\'t work inside the Home Screen app. If it doesn\'t, use your email and a password below.</p>' : "") +
       '<label class="field"><span>Email</span><input type="email" id="acct-email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
       '<label class="field"><span>Password</span><input type="password" id="acct-pass" autocomplete="current-password"></label>' +
       '<div class="btns"><button class="btn" data-act="acct-signin">Sign in</button><button class="btn" data-act="acct-signup">Create account</button><button class="btn btn--quiet" data-act="acct-forgot">Forgot password</button></div>' +
@@ -726,8 +728,7 @@
       "<li><b>Three good days.</b> A passage counts as memorized after you recall it on three different days.</li>" +
       "<li><b>Forgiving checks.</b> Spelling isn't memory, so small slips count as right.</li></ul></div>" +
       '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. NIV, NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
-      '<p class="fine">By Heart · Version ' + VERSION + " · " + (window.Account && Account.user ? "signed in" : "not signed in") +
-        " · saved account: " + (state.account ? "yes" : "no") + " · marker: " + (isSignedIn() ? "on" : "off") + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
+      '<p class="fine">By Heart · Version ' + VERSION + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
   }
   function fillVoices() {
     const sel = $("#voice"); if (!sel || !TTS) return;
