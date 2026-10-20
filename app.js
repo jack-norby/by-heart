@@ -656,6 +656,7 @@
   }
   // Signed out: this phone starts fresh (it may be shared), keeping only how the app looks.
   function signedOut() {
+    try { localStorage.setItem("byheart-signedin", ""); } catch (e) { /* fine */ }
     const keep = { settings: state.settings, installDismissed: state.installDismissed };
     state = Object.assign(fresh(), keep, { welcomed: true });
     writeLocal(); applyLook();
@@ -1468,7 +1469,8 @@
   // a few seconds) instead of flashing the welcome at someone who is signed in.
   let hint = null;
   try { hint = localStorage.getItem("byheart-signedin"); } catch (e) { /* treat as unknown */ }
-  const signedInHint = hint === "1" || (hint === null && !!state.account);
+  const signedInHint = hint === "1" || !!state.account; // a phone that has synced with an account is signed in
+  if (signedInHint && !state.welcomed) { state.welcomed = true; writeLocal(); } // signed-in people never need the welcome
   if (!signedInHint && !/^#(welcome|paste|pick|item|listen)/.test(location.hash)) {
     history.replaceState(null, "", location.pathname + location.search + "#welcome");
     if (hint === null && state.welcomed && window.BYHEART_FIREBASE) { // accounts are on (account.js loads next)

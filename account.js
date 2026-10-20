@@ -165,8 +165,9 @@
       A.loaded = true;
       auth.onAuthStateChanged(u => {
         A.authKnown = true; // Firebase has finished restoring (or not finding) a sign-in
-        // app.js reads this on the next launch to skip the welcome screen for signed-in people
-        try { localStorage.setItem("byheart-signedin", u ? "1" : ""); } catch (e) { /* the welcome just shows */ }
+        // app.js reads this on the next launch to skip the welcome screen for signed-in people. Only a real
+        // sign-out clears it (app.js signedOut): a passing "no user" (slow network, token refresh) doesn't.
+        if (u) { try { localStorage.setItem("byheart-signedin", "1"); } catch (e) { /* the welcome just shows */ } }
         if (u && (!A.user || A.user.uid !== u.uid)) { disconnect(); connect(u); }
         else if (!u && A.user) disconnect();
         changed(u ? undefined : "");
