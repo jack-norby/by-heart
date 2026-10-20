@@ -297,3 +297,6 @@ button.back { border: 0; background: none; color: var(--accent); font: inherit; 
 .steps li + li { margin-top: 6px; }
 .versegrid { margin-bottom: 90px; }
 .chap.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* iPhone Safari gives time pickers a built-in minimum width that pushes past the card; keep it inside */
+.field input[type="time"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
+.field input[type="time"]::-webkit-date-and-time-value { text-align: left; }

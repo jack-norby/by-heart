@@ -1374,7 +1374,11 @@
       if (user) state.account = user.uid; // so the empty copy replaces the account's instead of merging with it
       save(); applyLook(); welcomeStep = 0; helps = {}; go("#welcome");
     },
-    "welcome-next": () => { if (welcomeStep === 1) applyHelps(); welcomeStep++; save(); route(); },
+    "welcome-next": () => {
+      if (welcomeStep === 0 && state.welcomed) { go("#today"); return; } // already set up: straight in
+      if (welcomeStep === 1) applyHelps();
+      welcomeStep++; save(); route();
+    },
     help: el => { helps[el.dataset.v] = !helps[el.dataset.v]; route(); },
     "welcome-tr": el => { if (!Bible.ready(el.dataset.v)) { toast(Bible.whyNot(el.dataset.v)); return; } set().tr = el.dataset.v; save(); route(); },
     "welcome-verse": async el => {
@@ -1452,6 +1456,11 @@
     state.welcomed = true; save();
     history.replaceState(null, "", location.pathname + "#paste");
   }
+  // The welcome greets anyone who isn't signed in each time the app opens; signed-in people go straight in.
+  // Firebase restores a sign-in a moment after load, so account.js leaves a hint for this check.
+  let signedInHint = false;
+  try { signedInHint = localStorage.getItem("byheart-signedin") === "1"; } catch (e) { /* treat as signed out */ }
+  if (!signedInHint && !/^#(welcome|paste|pick|item|listen)/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + "#welcome");
   applyLook();
   route();
   refreshLicensed();

@@ -164,6 +164,8 @@
       auth = firebase.auth(); db = firebase.firestore();
       A.loaded = true;
       auth.onAuthStateChanged(u => {
+        // app.js reads this on the next launch to skip the welcome screen for signed-in people
+        try { localStorage.setItem("byheart-signedin", u ? "1" : ""); } catch (e) { /* the welcome just shows */ }
         if (u && (!A.user || A.user.uid !== u.uid)) { disconnect(); connect(u); }
         else if (!u && A.user) disconnect();
         changed(u ? undefined : "");
