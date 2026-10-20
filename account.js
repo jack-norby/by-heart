@@ -98,7 +98,7 @@
     changed("Connecting to your account…");
     ref.get().then(snap => {
       const local = app.state();
-      if (!snap.exists) { local.account = u.uid; return push(); }
+      if (!snap.exists) { local.account = u.uid; app.writeLocal(); return push(); } // remember this phone's account
       const d = snap.data();
       if (local.account !== u.uid) { // this device's first time in this account
         app.replace(Object.assign(merge(d.state || {}, local), { account: u.uid, updated: Date.now() }));
@@ -164,6 +164,7 @@
       auth = firebase.auth(); db = firebase.firestore();
       A.loaded = true;
       auth.onAuthStateChanged(u => {
+        A.authKnown = true; // Firebase has finished restoring (or not finding) a sign-in
         // app.js reads this on the next launch to skip the welcome screen for signed-in people
         try { localStorage.setItem("byheart-signedin", u ? "1" : ""); } catch (e) { /* the welcome just shows */ }
         if (u && (!A.user || A.user.uid !== u.uid)) { disconnect(); connect(u); }
@@ -173,6 +174,7 @@
       changed();
     }).catch(() => {
       A.status = "Sign-in needs an internet connection. Everything still works on this phone.";
+      A.authKnown = true;
       changed();
       window.addEventListener("online", start, { once: true });
     });

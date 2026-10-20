@@ -25,7 +25,7 @@ By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing B
 - **Answer methods:** Say it then check (default, self-marking), Speak (Web Speech API, hidden if unsupported), Tap the words, Type first letters, Type it. In tap/letter modes, words the cue already shows are given.
 - **Habits without shame.** Weekly goal (days per week) instead of streaks; no loss messages; "Just one (1 minute)"; an if-then plan ("After I ___, I'll open By Heart"); a daily reminder is a downloaded .ics calendar event.
 - Welcome asks "What helps you learn?" (never a diagnosis) and sets presets.
-- The welcome screen shows every time the app opens for someone who isn't signed in (owner's request); signed-in people go straight in. account.js keeps a `byheart-signedin` hint in localStorage because Firebase restores the sign-in a moment after load. For someone already set up, **Get started** goes straight to Today.
+- The welcome screen shows every time the app opens for someone who isn't signed in (owner's request); signed-in people go straight in. account.js keeps a `byheart-signedin` hint in localStorage because Firebase restores the sign-in a moment after load. With no hint yet (and no `state.account`), the page stays blank (`body.deciding`) until Firebase answers, at most 3 seconds, so signed-in people never see the welcome flash. For someone already set up, **Get started** goes straight to Today.
 
 ## Data
 - localStorage key `byheart-v1`: `{ settings, plan, progress: {id: {stage: learning|practicing|memorized, learned, s, d, due, last, good, refresh, reps, lapses, history}}, custom: [items], edits: {id: {text}}, days: {"YYYY-MM-DD": {s: steps, r: reviews}}, welcomed }`.

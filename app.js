@@ -633,8 +633,11 @@
     promise.catch(err => accountMsg(Account.friendly(err)));
   }
   let lastUid = null;
+  let deciding = false; // waiting to learn whether someone is signed in before showing the welcome
+  function endDeciding() { deciding = false; document.body.classList.remove("deciding"); }
   function accountChanged(A) {
     const uid = A.user ? A.user.uid : null, here = location.hash;
+    if (deciding && A.authKnown) { if (uid && state.welcomed && here === "#welcome") go("#today"); endDeciding(); }
     // signed in after all (the account finished loading): skip the welcome for someone already set up
     if (uid && here === "#welcome" && state.welcomed && welcomeStep === 0) { lastUid = uid; go("#today"); return; }
     const stale = uid !== lastUid || !$("#account") || (A.loaded && !A.user && !$("#acct-email"));
@@ -1461,12 +1464,19 @@
   // The welcome greets anyone who isn't signed in each time the app opens; signed-in people go straight in.
   // Firebase restores a sign-in a moment after load, so account.js leaves a hint for this check.
   // No hint yet (first launch after this was added): a phone that has synced with an account counts as signed in.
-  let signedInHint = false;
-  try {
-    const hint = localStorage.getItem("byheart-signedin");
-    signedInHint = hint === "1" || (hint === null && !!state.account);
-  } catch (e) { /* treat as signed out */ }
-  if (!signedInHint && !/^#(welcome|paste|pick|item|listen)/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + "#welcome");
+  // If this phone can't tell yet (no hint saved), the screen stays blank until the account answers (at most
+  // a few seconds) instead of flashing the welcome at someone who is signed in.
+  let hint = null;
+  try { hint = localStorage.getItem("byheart-signedin"); } catch (e) { /* treat as unknown */ }
+  const signedInHint = hint === "1" || (hint === null && !!state.account);
+  if (!signedInHint && !/^#(welcome|paste|pick|item|listen)/.test(location.hash)) {
+    history.replaceState(null, "", location.pathname + location.search + "#welcome");
+    if (hint === null && state.welcomed && window.BYHEART_FIREBASE) { // accounts are on (account.js loads next)
+      deciding = true;
+      document.body.classList.add("deciding");
+      setTimeout(endDeciding, 3000);
+    }
+  }
   applyLook();
   route();
   refreshLicensed();
@@ -1476,5 +1486,5 @@
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
   }
   // account.js uses replace and signedOut; the rest is for debugging in the console
-  window.ByHeart = { state: () => state, session: () => S, save, replace: replaceState, signedOut, accountChanged, Words: W, Memory: M };
+  window.ByHeart = { state: () => state, session: () => S, save, writeLocal, replace: replaceState, signedOut, accountChanged, Words: W, Memory: M };
 })();
