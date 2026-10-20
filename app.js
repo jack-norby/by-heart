@@ -31,7 +31,13 @@
   }
   let state = load();
   let warnedSave = false;
+  // Every save is stamped so account sync (account.js) can tell which copy is newer.
   function save() {
+    state.updated = Date.now();
+    writeLocal();
+    if (window.Account && Account.saved) Account.saved();
+  }
+  function writeLocal() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
     catch (e) { if (!warnedSave) { warnedSave = true; toast("This device wouldn't save your progress. Make a backup in Settings."); } }
   }
@@ -170,7 +176,7 @@
     speechSynthesis.speak(u);
   }
   function stopSpeaking() { if (TTS) speechSynthesis.cancel(); }
-  // API.Bible's license doesn't allow text-to-speech for the NKJV or CSB, so those never get a Listen button.
+  // API.Bible's license doesn't allow text-to-speech for the NIV, NKJV or CSB, so those never get a Listen button.
   const canHear = it => TTS && !!it && Bible.canSpeak(it);
   const hearBtn = (label) => canHear(curItem()) ? '<button class="btn" data-act="hear">' + ICON.speaker + label + "</button>" : "";
   // Map a spoken character offset back to a word index in tokens joined by spaces.
@@ -366,7 +372,10 @@
       '<p class="fine">Put each phrase on its own line if you like. Lines are how it gets learned.</p>' +
       '<div class="btns"><button class="btn btn--primary" data-act="save-edit" data-id="' + esc(id) + '">Save</button><button class="btn btn--quiet" data-act="cancel-edit">Cancel</button>' +
       (state.edits[id] ? '<button class="btn btn--quiet" data-act="restore-edit" data-id="' + esc(id) + '">Use the original</button>' : "") + "</div></div>" :
-      !it.text ? '<div class="card card--soft"><p>The ' + esc(trLabel(it.tr)) + " words need a quick refresh from API.Bible (its license asks for one every 30 days). Connect to the internet and they'll come back. Your progress is kept.</p></div>" :
+      !it.text ? '<div class="card card--soft"><p>' + (Bible.licensed(it) ? "The " + esc(trLabel(it.tr)) + " words need a quick refresh from API.Bible (its license asks for one every 30 days)." :
+        "The " + esc(trLabel(it.tr)) + " words aren't on this device yet (they're never stored in your account, only the reference).") +
+        (Bible.ready(it.tr) ? " Connect to the internet and they'll come " + (Bible.licensed(it) ? "back" : "in") + "." : " The " + esc(trLabel(it.tr)) + " isn't connected on this site yet, so they can't load.") +
+        " Your progress is kept.</p></div>" :
       '<div class="card">' + linesHTML(it) + "</div>";
     const extra = (it.text && canHear(it) ? '<button class="btn" data-act="listen-all" data-id="' + esc(id) + '">' + ICON.speaker + "Listen</button>" : "") +
       (it.text && p && p.stage !== "learning" ? '<a class="btn" href="#listen/' + encodeURIComponent(id) + '">Say it to someone</a>' : "");
@@ -381,16 +390,16 @@
       (it.custom ? '<button class="btn btn--quiet" data-act="remove-item" data-id="' + esc(id) + '">Remove</button>' : "") + "</div>" +
       creditHTML(it.credit, it.tr) + "</section>";
   }
-  // The translation after a reference. NKJV and CSB link to the copyright page, as API.Bible asks.
+  // The translation after a reference. NIV, NKJV and CSB link to the copyright page, as API.Bible asks.
   function trCite(it) { // an item, or a fetched passage ({tr})
     if (!it || !it.tr) return "";
     return " · " + (Bible.licensed(it) ? '<a href="#copyright">' + esc(trLabel(it.tr)) + "</a>" : esc(trLabel(it.tr)));
   }
-  function linkTo(url) { return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url.replace(/^https?:\/\/(www\.)?/, "")) + "</a>"; }
+  function linkTo(url, text) { return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text || url.replace(/^https?:\/\/(www\.)?/, "")) + "</a>"; }
   function creditHTML(credit, tr) {
     if (!credit) return "";
     const t = Bible.translation(tr);
-    return '<p class="fine">' + esc(credit) + (t && t.link ? " " + linkTo(t.link) : "") +
+    return '<p class="fine">' + esc(credit) + (t && t.link ? " " + linkTo(t.link, t.linkText) : "") +
       (Bible.licensed({ tr }) ? (t.link ? "." : "") + ' Provided through <a href="https://api.bible" target="_blank" rel="noopener">API.Bible</a>. <a href="#copyright">Copyright details</a>' : "") + "</p>";
   }
 
@@ -402,7 +411,7 @@
       '<p class="fine">' + esc(credit(t)) + "</p>" + (t.link ? '<p class="fine">' + linkTo(t.link) + "</p>" : "") +
       (t.source === "abible" ? '<p class="fine">Provided through <a href="https://api.bible" target="_blank" rel="noopener">API.Bible</a>. Not read aloud, and the words can\'t be changed, as its license asks.</p>' : "") + "</div>").join("");
     return '<section class="view"><a class="back" href="#settings">' + ICON.back + "Settings</a><h1 class=\"h1\">Copyright</h1>" + rows +
-      '<div class="card card--soft"><p class="fine">When NKJV or CSB words are on screen, By Heart tells API.Bible anonymously (their FUMS view count, which the publishers rely on). It sends no name or account, only random device and session numbers.</p>' +
+      '<div class="card card--soft"><p class="fine">When NIV, NKJV or CSB words are on screen, By Heart tells API.Bible anonymously (their FUMS view count, which the publishers rely on). It sends no name or account, only random device and session numbers.</p>' +
       '<p class="fine">BSB, KJV and WEB come through the Free Use Bible API (bible.helloao.org). Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation.</p></div></section>';
   }
 
@@ -426,8 +435,6 @@
   function fetchError(e, tr) {
     const m = e && e.message;
     if (m === "not-ready") return Bible.whyNot(tr);
-    if (m === "key") return "The YouVersion app key didn't work. Check it in config.js.";
-    if (m === "no-version") return "Your YouVersion app doesn't have the " + tr + " turned on yet. Add it in the YouVersion Platform portal.";
     if (m === "not-found") return "Couldn't find that in the " + tr + ".";
     if (m === "proxy") return "The " + tr + " server didn't answer. Try again in a minute.";
     if (m === "gone") return "The " + tr + " isn't turned on for this app's API.Bible account.";
@@ -494,14 +501,16 @@
     if (!pick || !pick.a) return;
     const tr = currentTr(), r = { book: pick.book, ch: pick.ch, a: pick.a, b: pick.b || pick.a };
     if (r.b - r.a + 1 > MAX_VERSES) { toast("That's a lot to learn at once. Pick " + MAX_VERSES + " verses or fewer."); return; }
-    const mine = pick;
-    Object.assign(pick, { loading: true, error: null, result: null });
+    const mine = pick, ask = (mine.ask || 0) + 1; // only the latest request counts (switching translation mid-load)
+    Object.assign(pick, { loading: true, error: null, result: null, ask });
     route();
     try {
       const res = await Bible.passage(tr, r);
+      if (mine.ask !== ask) return;
       if (mine.from && res.text.includes(mine.from)) res.text = res.text.slice(res.text.indexOf(mine.from));
       Object.assign(mine, { loading: false, result: res });
     } catch (e) {
+      if (mine.ask !== ask) return;
       Object.assign(mine, { loading: false, error: fetchError(e, tr) });
     }
     if (pick === mine) route();
@@ -600,6 +609,61 @@
       (mine.length ? "" : '<p class="empty">Nothing yet. Start with something short from the <a href="#library">library</a>.</p>') + "</section>";
   }
 
+  // ---------- Account (sign-in and sync live in account.js) ----------
+  function accountCard() {
+    const A = window.Account;
+    if (!A || !A.enabled) return "";
+    if (A.user) {
+      return '<div class="card" id="account"><h2 class="h3">Account</h2><p>Signed in as <b>' + esc(A.user.email || A.user.displayName || "you") + "</b>. Your verses, prayers, progress and settings follow you to any phone or computer where you sign in.</p>" +
+        '<p class="fine" id="sync-status" aria-live="polite">' + esc(A.status) + "</p>" +
+        '<div class="btns"><button class="btn" data-act="acct-signout">Sign out</button><button class="btn btn--quiet" data-act="acct-delete">Delete my account</button></div>' +
+        '<p class="fine" id="acct-msg" aria-live="polite"></p></div>';
+    }
+    if (!A.loaded) return '<div class="card" id="account"><h2 class="h3">Account</h2><p class="fine">' + esc(A.status || "Loading sign-in…") + "</p></div>";
+    return '<div class="card" id="account"><h2 class="h3">Account</h2><p>Sign in to keep your verses, prayers and progress on every device. It\'s optional: without it, everything stays on this phone.</p>' +
+      '<button class="btn btn--primary btn--wide" data-act="acct-google">Continue with Google</button>' +
+      '<label class="field"><span>Email</span><input type="email" id="acct-email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      '<label class="field"><span>Password</span><input type="password" id="acct-pass" autocomplete="current-password"></label>' +
+      '<div class="btns"><button class="btn" data-act="acct-signin">Sign in</button><button class="btn" data-act="acct-signup">Create account</button><button class="btn btn--quiet" data-act="acct-forgot">Forgot password</button></div>' +
+      '<p class="fine" id="acct-msg" aria-live="polite"></p>' +
+      '<p class="fine">Signing in saves your email and your list in By Heart\'s account storage (Google Firebase). Words from the ESV, NIV, NKJV and CSB services are never stored there, only their references.</p></div>';
+  }
+  function accountMsg(m) { const e = $("#acct-msg"); if (e) e.textContent = m || ""; }
+  function accountForm() {
+    const email = ($("#acct-email").value || "").trim(), pass = $("#acct-pass").value || "";
+    if (!email || !pass) { accountMsg("Type your email and a password first."); return null; }
+    return { email, pass };
+  }
+  function accountDo(promise) {
+    accountMsg("");
+    promise.catch(err => accountMsg(Account.friendly(err)));
+  }
+  let lastUid = null;
+  function accountChanged(A) {
+    const uid = A.user ? A.user.uid : null, here = location.hash;
+    const stale = uid !== lastUid || !$("#account") || (A.loaded && !A.user && !$("#acct-email"));
+    lastUid = uid;
+    if (here === "#settings" && stale) route(); // signed in or out, or sign-in just finished loading
+    else if (here === "#welcome" && !A.user && !$('[data-act="welcome-signin"]')) route();
+    else { const st = $("#sync-status"); if (st) st.textContent = A.status || ""; }
+  }
+  // A newer copy came from the account (or this phone signed in for the first time).
+  let waitingState = null;
+  function replaceState(next) {
+    if (S) { waitingState = next; return; } // don't pull the rug out mid-practice
+    state = migrate(next);
+    writeLocal(); applyLook(); refreshLicensed();
+    if (location.hash !== "#practice") route();
+  }
+  // Signed out: this phone starts fresh (it may be shared), keeping only how the app looks.
+  function signedOut() {
+    const keep = { settings: state.settings, installDismissed: state.installDismissed };
+    state = Object.assign(fresh(), keep, { welcomed: true });
+    writeLocal(); applyLook();
+    toast("Signed out. Your verses are saved in your account.");
+    go("#today");
+  }
+
   // ---------- Settings ----------
   const FMT = { size: v => v + "px", ls: v => Math.round(v * 100) + "%", ws: v => Math.round(v * 100) + "%", lh: v => (+v).toFixed(1), rate: v => (+v).toFixed(2) + "×" };
   function range(key, label, min, max, step) {
@@ -616,7 +680,7 @@
   function methods() { return METHODS.filter(m => m[0] !== "speak" || SR); }
   function settings() {
     const s = set();
-    return '<section class="view"><h1 class="h1">Settings</h1>' +
+    return '<section class="view"><h1 class="h1">Settings</h1>' + accountCard() +
       '<div class="card"><h2 class="h3">Reading</h2>' +
       '<div class="preview reading">The LORD is my shepherd;<br>I shall not want.</div>' +
       range("size", "Text size", 16, 36, 1) + range("ls", "Letter spacing", 0, 0.2, 0.01) +
@@ -640,7 +704,7 @@
       '<div class="card"><h2 class="h3">Bible translation</h2>' + select("tr", "For verses you add", Bible.TRANSLATIONS.filter(t => Bible.ready(t.id)).map(t => [t.id, t.name + " (" + t.id + ")"])) +
       '<ul class="tr-status">' + Bible.TRANSLATIONS.filter(t => !Bible.ready(t.id)).map(t => "<li><b>" + t.id + "</b> " + esc(Bible.whyNot(t.id)) + "</li>").join("") + "</ul></div>" +
       '<div class="card"><h2 class="h3">Backup</h2><p class="fine">Your progress lives only on this device. Save a backup now and then, especially before changing phones.' +
-      (state.custom.some(Bible.licensed) ? " NKJV and CSB words aren't saved in backups (their license); they're fetched again after you restore." : "") + "</p>" +
+      (state.custom.some(Bible.licensed) ? " NIV, NKJV and CSB words aren't saved in backups (their license); they're fetched again after you restore." : "") + "</p>" +
       '<div class="btns"><button class="btn" data-act="backup-file">Download backup</button><button class="btn" data-act="backup-code">Copy backup code</button></div>' +
       '<label class="field"><span>Restore from a backup code or file</span><textarea id="restore" rows="3" placeholder="Paste a backup code"></textarea></label>' +
       '<div class="btns"><button class="btn" data-act="restore-code">Restore code</button><label class="btn">Choose file<input type="file" id="restore-file" accept=".json,application/json" hidden></label></div></div>' +
@@ -650,7 +714,7 @@
       "<li><b>Spaced reviews.</b> Reviews come back just before you'd forget, further apart each time (the FSRS scheduler).</li>" +
       "<li><b>Three good days.</b> A passage counts as memorized after you recall it on three different days.</li>" +
       "<li><b>Forgiving checks.</b> Spelling isn't memory, so small slips count as right.</li></ul></div>" +
-      '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. NIV text comes through the YouVersion Platform, used by permission of Biblica, Inc. BSB, KJV and WEB are public domain, through the Free Use Bible API (bible.helloao.org). NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
+      '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. BSB, KJV and WEB are public domain, through the Free Use Bible API (bible.helloao.org). NIV, NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
       '<p class="fine">By Heart · Version ' + VERSION + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
   }
   function fillVoices() {
@@ -698,7 +762,8 @@
         '<p class="lead">Learn Scripture and prayers by heart, a few minutes at a time.</p>' +
         '<p>You practice a line at a time, with help that fades as you remember. Reviews come back just before you\'d forget. There\'s no clock and no penalty for mistakes.</p>' +
         '<p class="verse">“I have hidden Your word in my heart.” <span>Psalm 119:11</span></p>' +
-        '<button class="btn btn--primary btn--big" data-act="welcome-next">Get started</button></section>';
+        '<button class="btn btn--primary btn--big" data-act="welcome-next">Get started</button>' +
+        (window.Account && Account.enabled ? '<button class="btn btn--quiet btn--wide" data-act="welcome-signin">I have an account</button>' : "") + "</section>";
     }
     if (welcomeStep === 1) {
       return '<section class="view view--welcome"><h1 class="h1">What helps you learn?</h1><p>Pick any that fit. You can change them later in Settings.</p>' +
@@ -765,7 +830,7 @@
     nextTask();
     go("#practice");
   }
-  function endSession() { stopListening(); stopSpeaking(); S = null; }
+  function endSession() { stopListening(); stopSpeaking(); S = null; if (waitingState) { const w = waitingState; waitingState = null; replaceState(w); } }
   function totalSteps() { return S.plans.reduce((n, p) => n + p.length, 0); }
   function nextTask() {
     S.ti++;
@@ -1126,7 +1191,7 @@
       '<div class="btns btns--center"><button class="btn btn--primary btn--big" data-act="listener-done" data-id="' + esc(id) + '">Finished</button></div></section>';
   }
 
-  // ---------- keeping NKJV and CSB text current ----------
+  // ---------- keeping NIV, NKJV and CSB text current ----------
   // API.Bible's terms: check saved text at least every 30 days, show nothing older, and take it down when access
   // ends. Passages are fetched again after 25 days (one call each); after 30 days without a refresh the words are hidden.
   let refreshing = false;
@@ -1136,7 +1201,8 @@
     state.custom.forEach(c => { if (c.text && Bible.expired(c) && !busy(c)) { c.text = ""; changed = true; } });
     if (!refreshing && navigator.onLine !== false) {
       refreshing = true;
-      for (const c of state.custom.filter(Bible.needsRefresh)) {
+      const missing = c => !c.text && !!c.r && c.src !== "paste" && !Bible.licensed(c);
+      for (const c of state.custom.filter(c => Bible.needsRefresh(c) || missing(c))) {
         if (busy(c) || !Bible.ready(c.tr)) continue;
         try {
           const res = await Bible.passage(c.tr, c.r);
@@ -1229,7 +1295,7 @@
       const v = el.dataset.v;
       if (!Bible.ready(v)) { toast(Bible.whyNot(v)); return; }
       set().tr = v; save();
-      if (pick && (pick.result || pick.error)) getPicked(); else route();
+      if (pick && (pick.result || pick.error || pick.loading)) getPicked(); else route();
     },
     "pick-book": el => { pick.book = el.dataset.v; pick.ch = null; pick.a = pick.b = null; route(); $(".scroller").scrollTop = 0; },
     "pick-ch": el => { pick.ch = +el.dataset.v; pick.a = pick.b = null; route(); $(".scroller").scrollTop = 0; },
@@ -1293,7 +1359,27 @@
       let json = null; try { json = decodeURIComponent(escape(atob(v))); } catch (e) { json = v; }
       restore(json);
     },
-    "start-over": () => { if (confirm("Erase all progress, settings and added verses on this device?") && confirm("This can't be undone. Erase everything?")) { state = fresh(); save(); applyLook(); welcomeStep = 0; helps = {}; go("#welcome"); } },
+    "welcome-signin": () => { state.welcomed = true; writeLocal(); go("#settings"); },
+    "acct-google": () => accountDo(Account.google()),
+    "acct-signin": () => { const f = accountForm(); if (f) accountDo(Account.signIn(f.email, f.pass)); },
+    "acct-signup": () => { const f = accountForm(); if (f) accountDo(Account.signUp(f.email, f.pass)); },
+    "acct-forgot": () => {
+      const email = ($("#acct-email").value || "").trim();
+      if (!email) { accountMsg("Type your email first, then tap Forgot password."); return; }
+      Account.reset(email).then(() => accountMsg("Check your email for a link to reset your password.")).catch(err => accountMsg(Account.friendly(err)));
+    },
+    "acct-signout": () => { if (confirm("Sign out? Your verses stay in your account, and this phone starts fresh.")) Account.signOut(); },
+    "acct-delete": () => {
+      if (!confirm("Delete your account and everything saved in it? This phone keeps nothing either. This can't be undone.")) return;
+      Account.deleteAccount().catch(err => accountMsg(Account.friendly(err)));
+    },
+    "start-over": () => {
+      const user = window.Account && Account.user;
+      if (!confirm("Erase all progress, settings and added verses " + (user ? "on this device and in your account?" : "on this device?")) || !confirm("This can't be undone. Erase everything?")) return;
+      state = fresh();
+      if (user) state.account = user.uid; // so the empty copy replaces the account's instead of merging with it
+      save(); applyLook(); welcomeStep = 0; helps = {}; go("#welcome");
+    },
     "welcome-next": () => { if (welcomeStep === 1) applyHelps(); welcomeStep++; save(); route(); },
     help: el => { helps[el.dataset.v] = !helps[el.dataset.v]; route(); },
     "welcome-tr": el => { if (!Bible.ready(el.dataset.v)) { toast(Bible.whyNot(el.dataset.v)); return; } set().tr = el.dataset.v; save(); route(); },
@@ -1380,5 +1466,6 @@
   if ("serviceWorker" in navigator && location.protocol !== "file:" && !local) {
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
   }
-  window.ByHeart = { state: () => state, session: () => S, save, Words: W, Memory: M }; // for debugging in the console
+  // account.js uses replace and signedOut; the rest is for debugging in the console
+  window.ByHeart = { state: () => state, session: () => S, save, replace: replaceState, signedOut, accountChanged, Words: W, Memory: M };
 })();

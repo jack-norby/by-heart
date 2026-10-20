@@ -1,9 +1,8 @@
 // By Heart: the Bible. Books, translations, and fetching a passage from each source.
 // - Free translations (BSB, KJV, WEB) come from the Free Use Bible API (bible.helloao.org). No key needed.
-// - The NIV comes from the YouVersion Platform with the free app key in config.js.
 // - The ESV comes from Crossway's ESV API through a small proxy server that keeps the key private
 //   (the esv-proxy folder next to this one). Its address goes in config.js.
-// - NKJV and CSB come from API.Bible through the same proxy (its address goes in config.js as apiBibleProxy).
+// - NIV, NKJV and CSB come from API.Bible through the same proxy (its address goes in config.js as apiBibleProxy).
 //   Their license asks for more: a FUMS view report whenever the text is shown, saved text checked again
 //   within 30 days, no reading aloud, no changing the words, and a copyright page. See CLAUDE.md.
 (function () {
@@ -31,14 +30,15 @@
   const book = id => BOOKS.find(b => b[0] === id);
 
   const ESV_CREDIT = "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved.";
-  const NIV_CREDIT = "Scripture quotations taken from The Holy Bible, New International Version® NIV®. Copyright © 1973, 1978, 1984, 2011 by Biblica, Inc.™ Used by permission. All rights reserved worldwide.";
+  const NIV_CREDIT = "Scripture quotations taken from The Holy Bible, New International Version® NIV®. Copyright © 1973, 1978, 1984, 2011 by Biblica, Inc.® Used by Permission of Biblica, Inc.® All rights reserved worldwide.";
   const NKJV_CREDIT = "Scripture taken from the New King James Version®. Copyright © 1982 by Thomas Nelson. Used by permission. All rights reserved.";
   const CSB_CREDIT = "Scripture quotations marked CSB have been taken from the Christian Standard Bible®, Copyright © 2017 by Holman Bible Publishers. Used by permission. Christian Standard Bible® and CSB® are federally registered trademarks of Holman Bible Publishers.";
   // API.Bible's rules: no text-to-speech or edits, refresh within 30 days, fewer than 500 verses cached.
   const AB_RULES = { source: "abible", speech: false, editable: false, maxVerses: 499 };
   const TRANSLATIONS = [
-    { id: "ESV", name: "English Standard Version", source: "esv", credit: ESV_CREDIT, link: "https://www.esv.org", maxVerses: 500 },
-    { id: "NIV", name: "New International Version", source: "yv", match: /^NIV(11|2011)?$/i, credit: NIV_CREDIT },
+    { id: "ESV", name: "English Standard Version", source: "esv", credit: ESV_CREDIT, link: "https://www.esv.org", maxVerses: 500, editable: false }, // Crossway: words may not be changed
+    // Biblica asks for a link with the word "Biblica" in it every time the NIV is shown.
+    Object.assign({ id: "NIV", name: "New International Version", credit: NIV_CREDIT, link: "https://www.biblica.com", linkText: "Biblica" }, AB_RULES),
     Object.assign({ id: "NKJV", name: "New King James Version", credit: NKJV_CREDIT, link: "https://www.harpercollins.com" }, AB_RULES),
     Object.assign({ id: "CSB", name: "Christian Standard Bible", credit: CSB_CREDIT, link: "https://www.bhpublishinggroup.com" }, AB_RULES),
     { id: "BSB", name: "Berean Standard Bible", source: "free", code: "BSB", credit: "Berean Standard Bible. Public domain." },
@@ -50,7 +50,6 @@
     const t = translation(id);
     if (!t || !t.source) return false;
     if (t.source === "esv") return !!cfg().esvProxy;
-    if (t.source === "yv") return !!cfg().youversionKey;
     if (t.source === "abible") return !!cfg().apiBibleProxy;
     return true;
   }
@@ -59,7 +58,6 @@
     if (!t) return "Unknown translation.";
     if (!t.source) return t.id + " isn't connected yet.";
     if (t.source === "esv") return "The ESV needs its proxy set up first (see config.js).";
-    if (t.source === "yv") return "The NIV needs a YouVersion app key first (see config.js).";
     if (t.source === "abible") return "The " + t.id + " needs the API.Bible proxy set up first (see config.js).";
     return "";
   }
@@ -116,32 +114,6 @@
     return data.chapter.content.filter(x => x.type === "verse").map(v => ({ n: v.number, text: verseText(v.content) }));
   }
 
-  // ---------- NIV (YouVersion Platform) ----------
-  const YV = "https://api.youversion.com/v1";
-  async function yvGet(path) {
-    const res = await fetch(YV + path, { headers: { "X-YVP-App-Key": cfg().youversionKey } });
-    if (res.status === 401 || res.status === 403) throw new Error("key");
-    if (!res.ok) throw new Error("not-found");
-    return res.json();
-  }
-  async function yvVersion(t) {
-    const saved = (() => { try { return JSON.parse(localStorage.getItem("byheart-yv") || "{}"); } catch (e) { return {}; } })();
-    if (saved[t.id] && saved[t.id].key === cfg().youversionKey) return saved[t.id];
-    const list = await yvGet("/bibles?language_ranges[]=en&page_size=*&fields[]=id&fields[]=abbreviation&fields[]=localized_abbreviation&fields[]=copyright");
-    const all = list.data || list;
-    const v = all.find(x => t.match.test(x.abbreviation || "") || t.match.test(x.localized_abbreviation || ""));
-    if (!v) throw new Error("no-version");
-    saved[t.id] = { id: v.id, credit: v.copyright || t.credit, key: cfg().youversionKey };
-    try { localStorage.setItem("byheart-yv", JSON.stringify(saved)); } catch (e) { /* fine, look it up next time */ }
-    return saved[t.id];
-  }
-  async function yvPassage(t, r) {
-    const v = await yvVersion(t);
-    const usfm = r.book + "." + r.ch + (r.a ? "." + r.a + (r.b && r.b !== r.a ? "-" + r.b : "") : "");
-    const p = await yvGet("/bibles/" + v.id + "/passages/" + usfm + "?format=text&include_headings=false&include_notes=false");
-    return { text: p.content, credit: v.credit };
-  }
-
   // ---------- ESV (through the proxy) ----------
   async function esvPassage(t, r) {
     const url = cfg().esvProxy.replace(/\/+$/, "") + "/passage?q=" + encodeURIComponent(refString(r).replace("–", "-"));
@@ -149,7 +121,10 @@
     if (!res.ok) throw new Error(res.status === 404 ? "not-found" : "proxy");
     const data = await res.json();
     if (!data.passages || !data.passages.length || !data.passages[0].trim()) throw new Error("not-found");
-    return { text: data.passages[0], credit: t.credit };
+    let text = data.passages[0];
+    // A psalm's title ("A Psalm of David.") comes first, on its own paragraph; it isn't part of verse 1.
+    if (r.book === "PSA" && r.a === 1) text = text.replace(/^[^\n]{1,120}\n\s*\n/, "");
+    return { text, credit: t.credit };
   }
 
   // ---------- NKJV, CSB (API.Bible, through the proxy) ----------
@@ -170,9 +145,9 @@
   const needsRefresh = it => licensed(it) && !!it.r && (!it.text || age(it) >= REFRESH_DAYS);
   const expired = it => licensed(it) && age(it) >= KEEP_DAYS;
   const canSpeak = it => !licensed(it);
-  const canEdit = it => !licensed(it);
+  const canEdit = it => { const t = it && it.src !== "paste" && translation(it.tr); return !(t && t.editable === false); };
 
-  // FUMS: API.Bible's view counter. Each time NKJV or CSB text is shown, its token is reported with their
+  // FUMS: API.Bible's view counter. Each time NIV, NKJV or CSB text is shown, its token is reported with their
   // script (anonymous device and session ids only). Views while offline wait in localStorage until the next connection.
   const FUMS_KEY = "byheart-fums", seen = {};
   let fumsLoaded = 0; // 0 not yet, 1 loading, 2 ready
@@ -225,10 +200,11 @@
       const picked = all.filter(v => v.n >= r.a && v.n <= (r.b || r.a));
       if (!picked.length) throw new Error("not-found");
       out = { text: picked.map(v => v.text).join(" ").replace(/ ?\n ?/g, "\n"), credit: t.credit };
-    } else if (t.source === "yv") out = await yvPassage(t, r);
-    else if (t.source === "abible") out = await abPassage(t, r);
+    } else if (t.source === "abible") out = await abPassage(t, r);
     else out = await esvPassage(t, r);
-    return { text: tidy(out.text), credit: out.credit, ref: refString(r), tr: t.id, verses, fums: out.fums, fetched: out.fetched };
+    let text = tidy(out.text);
+    if (r.book === "PSA") text = text.replace(/^Psalms? \d+\n/i, ""); // a heading some translations put before verse 1
+    return { text, credit: out.credit, ref: refString(r), tr: t.id, verses, fums: out.fums, fetched: out.fetched };
   }
 
   // ---------- pasted from the Bible App ----------

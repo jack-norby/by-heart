@@ -10,9 +10,10 @@ By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing B
 - `words.js`: splitting text into lines/phrases, cue rendering helpers, forgiving answer checking (word alignment, spelling slips, sound-alike words, numbers).
 - `memory.js`: scheduling. FSRS-4.5 default weights plus the "three good days" ladder.
 - `bible.js`: the 66 books (with chapter counts), the translations, reference parsing, and fetching a passage from each source (see Translations below).
-- `config.js`: the YouVersion app key (NIV) and the proxy addresses (`esvProxy`, `apiBibleProxy`; usually the same Worker). Empty means "not set up yet".
+- `config.js`: the proxy addresses (`esvProxy`, `apiBibleProxy`; usually the same Worker). Empty means "not set up yet".
 - `library.js`: `POPULAR` verses and `SCRIPTURE_PRAYERS` (references plus a title and "What it means" note; the words are fetched in the chosen translation) and `PRAYERS` (Protestant prayers, creeds and catechism answers with fixed traditional wording).
-- `../esv-proxy/`: a Cloudflare Worker that holds the ESV and API.Bible keys (`/passage` for the ESV, `/bible` for NKJV and CSB). Not part of the website upload.
+- `account.js` + `firebase-config.js`: optional accounts (Firebase, its own project, not Iron's). Off while the config is `null`; setup in `../ACCOUNTS.md`.
+- `../esv-proxy/`: a Cloudflare Worker that holds the ESV and API.Bible keys (`/passage` for the ESV, `/bible` for NIV, NKJV and CSB). Not part of the website upload.
 - `style.css`: the whole design. Theme tokens at the top (cream default, light, mist, oxblood, night).
 - `sw.js`: offline cache. `manifest.webmanifest` + icons (`icon-192/512.png`, `apple-touch-icon.png`, `favicon-32.png`, `favicon.svg`: a cream heart with a cross cut out, on oxblood #7a2e2e).
 
@@ -27,16 +28,15 @@ By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing B
 
 ## Data
 - localStorage key `byheart-v1`: `{ settings, plan, progress: {id: {stage: learning|practicing|memorized, learned, s, d, due, last, good, refresh, reps, lapses, history}}, custom: [items], edits: {id: {text}}, days: {"YYYY-MM-DD": {s: steps, r: reviews}}, welcomed }`.
-- Every verse someone adds is a `custom` item: `{id, custom, kind: verse|prayer, title, ref, tr, text, credit, about, r: {book, ch, a, b}, verses}`. The text is saved on the device so practice works offline. NKJV and CSB items also keep `fums` (the FUMS token), `fetched` (ms timestamp) and `from` (where a Scripture prayer starts). An empty `text` means "waiting for a refresh": the item stays, with its progress, but is left out of practice.
+- Every verse someone adds is a `custom` item: `{id, custom, kind: verse|prayer, title, ref, tr, text, credit, about, r: {book, ch, a, b}, verses}`. The text is saved on the device so practice works offline. NIV, NKJV and CSB items also keep `fums` (the FUMS token), `fetched` (ms timestamp) and `from` (where a Scripture prayer starts). An empty `text` means "waiting for a refresh": the item stays, with its progress, but is left out of practice.
 - `byheart-fums` holds FUMS view reports made offline, sent when the app is next online.
-- `byheart-yv` caches the YouVersion version id and copyright line per translation.
-- Backups: download a JSON file or copy a base64 backup code (Settings). NKJV and CSB words are left out and fetched again after a restore.
+- Backups: download a JSON file or copy a base64 backup code (Settings). NIV, NKJV and CSB words are left out and fetched again after a restore.
 - Editing a passage's words clears its progress (after a confirm).
 
 ## Translations
 The picker offers ESV, NIV, NKJV, CSB first (the owner's picks), then the free BSB, KJV and WEB. Browsing chapters always uses a free translation (BSB unless a free one is chosen), so licensed sources are only asked when someone adds a passage.
 - **BSB, KJV, WEB:** Free Use Bible API (bible.helloao.org), public domain, no key, CORS open.
-- **NIV:** YouVersion Platform (api.youversion.com, CORS open). Needs a free app key in `config.js` and the NIV turned on for that app in the portal. The app looks up the version id by abbreviation and keeps the version's copyright line. Untested against the live API (no key yet): check the passage text format the first time.
+- **NIV:** through API.Bible like the NKJV and CSB (owner's decision, Oct 20, 2026, after reading Biblica's terms; API.Bible's NIV comes with Biblica's own license as custom terms). Same API.Bible rules apply, plus a link whose text includes "Biblica" every time NIV text is shown (`linkText` in `bible.js`). Not through YouVersion Platform: the owner's YouVersion app "By Heart" is unused and that license was never accepted there.
 - **ESV:** Crossway's ESV API through `../esv-proxy` (the key must not be published). Free for non-commercial use only (no ads, sales or donations); show "ESV", Crossway's copyright line and an esv.org link; at most 500 ESV verses stored per device (the app enforces this).
 - **NKJV, CSB:** API.Bible (rest.api.bible) through the proxy's `/bible?tr=NKJV&ref=JHN.3.16-JHN.3.18` route. They aren't on YouVersion Platform (as of Oct 2026). Free Starter plan (checked Oct 20, 2026 against the terms dated Sept. 3, 2026): non-commercial only, up to 3 licensed Bibles, 5,000 calls a month for the whole app, and the NKJV only while the app has 5,000 or fewer monthly users. The Worker finds each Bible's ID by abbreviation (CSB is `a556c5305ee15c3f-01` per the docs; the NKJV ID isn't published) and passes back the text, API.Bible's copyright line and the FUMS token. Untested against the live API (no key yet): check the text format the first time. What the terms require, and where the app does it:
   - **FUMS** (required for web apps): `Bible.reportView(token)` loads pkg.api.bible/fumsV3.min.js only when NKJV/CSB text is shown and calls `fums("trackView", ...)`. It runs on the item page, the "Say it to someone" screen, the add-a-verse preview, and the start of each practice passage, at most once per screen per 10 minutes.
@@ -44,12 +44,22 @@ The picker offers ESV, NIV, NKJV, CSB first (the owner's picks), then the free B
   - **Text only:** no text-to-speech for copyrighted text, so there are no Listen/Hear it buttons and no auto-read for these (`speech: false`). The words can't be edited (`editable: false`).
   - **Citations:** the abbreviation after the reference links to `#copyright`, a page with each translation's full notice, the publisher's site and a link to api.bible (the Starter plan must show one). The credit line under the text links there too.
   - Fewer than 500 verses cached: `maxVerses: 499` per device. The key never goes in the website files. Not done: DRM. The terms' section 12 asks for "industry-standard DRM"; a web app can't really do that, so backups just leave the words out. Ask API.Bible if this matters.
-- Never put an ESV or API.Bible key in the website files. Changing what the app does with NKJV/CSB text? Re-read api.bible/terms-and-conditions first (sections 7, 9, 11, 12, 14).
+- Never put an ESV or API.Bible key in the website files.
+- Editing the words is off for ESV, NIV, NKJV and CSB passages fetched by the app (`editable: false`; Crossway and API.Bible don't allow changes). Pasted or typed text can always be edited.
+- The live Worker is `by-heart-bible` (https://by-heart-bible.jnorby.workers.dev); `config.js` points both `esvProxy` and `apiBibleProxy` at it. The ESV adds a psalm's title ("A Psalm of David.") before verse 1; `esvPassage` drops it. Status and redeploy steps are in `../esv-proxy/README.md`. API.Bible's NIV puts a "Psalm N" heading before verse 1; `Bible.passage` drops it. Changing what the app does with NKJV/CSB text? Re-read api.bible/terms-and-conditions first (sections 7, 9, 11, 12, 14).
+
+## Accounts
+- Firebase compat SDK 10.12.2 from gstatic, loaded only when `firebase-config.js` has a config. Google (popup, redirect fallback) and email/password, like Iron.
+- Firestore `users/{uid}` = `{state, updated, device, email}`; rules allow only the owner and only those keys (in `ACCOUNTS.md`).
+- Sync is newest-copy-wins on `state.updated` (stamped by every `save()`; `writeLocal()` saves without stamping or syncing). A device's first sign-in to an account (`state.account !== uid`) merges both copies instead. Remote changes that arrive mid-practice wait until the session ends.
+- Words fetched from the ESV, NIV, NKJV or CSB services are stripped before upload (only references sync) and re-fetched on each device. Pasted/typed/public-domain words sync.
+- Sign out leaves the phone fresh except for look settings. Delete removes the Firestore doc first, then the sign-in (if Firebase needs a fresh sign-in, the copy is put back).
+- To test without a real project, the preview swapped `firebase-config.js` for a stand-in `firebase` object; nothing like that is in the project.
 
 ## Pasting from the Bible App
 - Library → "Paste from your Bible app" (`#paste`). The person copies verses in the YouVersion Bible App (or bible.com) and pastes; `Bible.readPasted` finds the reference, the translation (from "John 3:16 ESV" or the bible.com link's version number) and the words. It strips the invisible marks the app puts around dashes and the verse numbers between verses. The exact copy format isn't documented, so everything is shown in editable fields before saving.
 - Android can share straight in: `share_target` in the manifest opens `index.html?text=…&url=…`, which goes to `#paste`. iPhones only allow copy and paste for web apps.
-- Pasted items have `src: "paste"`. They're the person's own copy for personal memorizing, so API.Bible's rules (no reading aloud, no editing, FUMS, 30-day refresh) never apply to them, even for NKJV or CSB. `Bible.licensed(item)` checks `src`, so pass the item, not just its translation.
+- Pasted items have `src: "paste"`. They're the person's own copy for personal memorizing, so API.Bible's rules (no reading aloud, no editing, FUMS, 30-day refresh) never apply to them, even for NIV, NKJV or CSB. `Bible.licensed(item)` checks `src`, so pass the item, not just its translation.
 - Don't fetch or scrape text from the Bible App or bible.com in code: that's against YouVersion's terms and the publishers' copyright.
 
 ## Content rules
