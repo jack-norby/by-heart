@@ -223,6 +223,14 @@
     back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
 
+  // Signed in = Firebase says so, or this phone has synced with an account, or the sign-in marker is set.
+  // Signed-in people never see the welcome (owner's request), however the app got here.
+  function isSignedIn() {
+    if (window.Account && Account.user) return true;
+    if (state.account) return true;
+    try { return localStorage.getItem("byheart-signedin") === "1"; } catch (e) { return false; }
+  }
+
   // ---------- router ----------
   const main = () => $("#main");
   function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
@@ -230,6 +238,8 @@
     stopSpeaking();
     const [name, arg] = location.hash.replace(/^#/, "").split("/").map(decodeURIComponent);
     if (name !== "practice" && S) endSession();
+    if (!state.welcomed && isSignedIn()) state.welcomed = true;
+    if (name === "welcome" && isSignedIn() && welcomeStep === 0) { location.replace("#today"); return; }
     if (!state.welcomed && name !== "welcome") { location.replace("#welcome"); return; }
     document.body.classList.toggle("in-practice", name === "practice" || name === "listen");
     document.body.classList.toggle("no-tabs", name === "welcome");
@@ -637,9 +647,9 @@
   function endDeciding() { deciding = false; document.body.classList.remove("deciding"); }
   function accountChanged(A) {
     const uid = A.user ? A.user.uid : null, here = location.hash;
-    if (deciding && A.authKnown) { if (uid && state.welcomed && here === "#welcome") go("#today"); endDeciding(); }
+    if (deciding && A.authKnown) { if (uid && here === "#welcome") go("#today"); endDeciding(); }
     // signed in after all (the account finished loading): skip the welcome for someone already set up
-    if (uid && here === "#welcome" && state.welcomed && welcomeStep === 0) { lastUid = uid; go("#today"); return; }
+    if (uid && here === "#welcome" && welcomeStep === 0) { lastUid = uid; state.welcomed = true; writeLocal(); go("#today"); return; }
     const stale = uid !== lastUid || !$("#account") || (A.loaded && !A.user && !$("#acct-email"));
     lastUid = uid;
     if (here === "#settings" && stale) route(); // signed in or out, or sign-in just finished loading
@@ -651,6 +661,7 @@
   function replaceState(next) {
     if (S) { waitingState = next; return; } // don't pull the rug out mid-practice
     state = migrate(next);
+    if (isSignedIn()) state.welcomed = true;
     writeLocal(); applyLook(); refreshLicensed();
     if (location.hash !== "#practice") route();
   }
@@ -715,7 +726,8 @@
       "<li><b>Three good days.</b> A passage counts as memorized after you recall it on three different days.</li>" +
       "<li><b>Forgiving checks.</b> Spelling isn't memory, so small slips count as right.</li></ul></div>" +
       '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. NIV, NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
-      '<p class="fine">By Heart · Version ' + VERSION + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
+      '<p class="fine">By Heart · Version ' + VERSION + " · " + (window.Account && Account.user ? "signed in" : "not signed in") +
+        " · saved account: " + (state.account ? "yes" : "no") + " · marker: " + (isSignedIn() ? "on" : "off") + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
   }
   function fillVoices() {
     const sel = $("#voice"); if (!sel || !TTS) return;
@@ -1469,11 +1481,11 @@
   // a few seconds) instead of flashing the welcome at someone who is signed in.
   let hint = null;
   try { hint = localStorage.getItem("byheart-signedin"); } catch (e) { /* treat as unknown */ }
-  const signedInHint = hint === "1" || !!state.account; // a phone that has synced with an account is signed in
+  const signedInHint = isSignedIn();
   if (signedInHint && !state.welcomed) { state.welcomed = true; writeLocal(); } // signed-in people never need the welcome
   if (!signedInHint && !/^#(welcome|paste|pick|item|listen)/.test(location.hash)) {
     history.replaceState(null, "", location.pathname + location.search + "#welcome");
-    if (hint === null && state.welcomed && window.BYHEART_FIREBASE) { // accounts are on (account.js loads next)
+    if (hint === null && window.BYHEART_FIREBASE) { // accounts are on (account.js loads next): wait for its answer
       deciding = true;
       document.body.classList.add("deciding");
       setTimeout(endDeciding, 3000);

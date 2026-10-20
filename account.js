@@ -46,6 +46,7 @@
       return c;
     });
     delete s.account;
+    s.welcomed = true; // anyone with an account has been through setup
     return s;
   }
   // The cloud copy has no licensed words, so keep this device's copy of them where the passage is unchanged.
