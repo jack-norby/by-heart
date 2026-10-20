@@ -68,7 +68,7 @@
     const p = prog(it.id);
     if (!p) return { key: "new", label: "New" };
     if (p.stage === "learning" && !it.text) return { key: "learning", label: "Learning" };
-    if (p.stage === "learning") return { key: "learning", label: "Learning · " + Math.min(p.learned || 0, phrasesOf(it).length) + " of " + phrasesOf(it).length + " lines" };
+    if (p.stage === "learning") return { key: "learning", label: "Learning · " + Math.min(p.learned || 0, phrasesOf(it).length) + "/" + phrasesOf(it).length };
     if (p.stage === "practicing") return { key: "practicing", label: "Practicing", good: p.good || 0 };
     return { key: "memorized", label: p.refresh ? "Memorized · needs a refresh" : "Memorized" };
   }
@@ -755,7 +755,7 @@
       return '<section class="view view--welcome"><svg class="mark" aria-hidden="true"><use href="#mark"/></svg><h1 class="h1 h1--brand">By Heart</h1>' +
         '<p class="lead">Learn Scripture and prayers by heart, a few minutes at a time.</p>' +
         '<p>You practice a line at a time, with help that fades as you remember. Reviews come back just before you\'d forget. There\'s no clock and no penalty for mistakes.</p>' +
-        '<p class="verse">“I have hidden Your word in my heart.” <span>Psalm 119:11</span></p>' +
+        '<p class="verse">“I have stored up your word in my heart.” <span>Psalm 119:11 (ESV)</span></p>' +
         '<button class="btn btn--primary btn--big" data-act="welcome-next">Get started</button>' +
         (window.Account && Account.enabled ? '<button class="btn btn--quiet btn--wide" data-act="welcome-signin">I have an account</button>' : "") + "</section>";
     }

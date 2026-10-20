@@ -1,6 +1,6 @@
 # By Heart: notes for Claude
 
-"I have hidden Your word in my heart." (Psalm 119:11)
+"I have stored up your word in my heart." (Psalm 119:11, ESV)
 
 By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing Bible verses and common prayers. It installs to a phone's Home Screen and works offline. The owner is Protestant: the library has Protestant prayers and creeds only, and the main flow is picking any verse in the translation you want. It's built for every kind of learner, including people with dyslexia, ADHD, autism, motor or hearing differences, and older adults, based on a research report the owner commissioned ("Scripture memorization for diverse learners"). The owner also made Iron (`~/Desktop/iron`) and publishes both on GitHub Pages under `jack-norby.github.io`.
 
