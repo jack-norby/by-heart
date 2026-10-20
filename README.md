@@ -5,7 +5,7 @@ Learn Scripture and prayers by heart, a few minutes at a time.
 By Heart is a free web app you can add to your phone's Home Screen. It works offline and keeps everything on your device. It's designed for every kind of learner, including people with dyslexia, ADHD and other learning differences.
 
 ## What it does
-- **Any verse, your translation.** Pick a book, a chapter, then the verses, or type a reference like John 15:5. ESV, NIV, NKJV and CSB once they're set up (see below), plus the free BSB, KJV and WEB.
+- **Any verse, your translation.** Pick a book, a chapter, then the verses, or type a reference like John 15:5. Choose the ESV, NIV, NKJV or CSB.
 - **Paste from your Bible app.** Copy verses in the YouVersion Bible App, in any translation, and paste them in. By Heart reads the reference and translation for you. On Android you can also share straight to By Heart.
 - **A line at a time.** Read a line out loud, then say it with some words blank, then with first letters, then from memory. Slip up and the help comes back.
 - **Reviews at the right time.** Passages come back just before you'd forget, further apart each time. Recall one on three different days and it's memorized.
@@ -29,4 +29,4 @@ By Heart is a free web app you can add to your phone's Home Screen. It works off
 Upload every file in this folder to a GitHub repository named `by-heart`, then turn on GitHub Pages (Settings → Pages → Deploy from branch → main). It will be at `https://jack-norby.github.io/by-heart/`.
 
 ## Credits
-Scripture: ESV (Crossway), NKJV (Thomas Nelson) and CSB (Holman Bible Publishers) through [API.Bible](https://api.bible), BSB, KJV and WEB (public domain, through the Free Use Bible API). Full notices are on the app's Copyright page (Settings → About). ELLC creeds © 1988 English Language Liturgical Consultation. Scheduling: FSRS (open-spaced-repetition).
+Scripture: ESV (Crossway); NIV (Biblica), NKJV (Thomas Nelson) and CSB (Holman Bible Publishers) through [API.Bible](https://api.bible). Full notices are on the app's Copyright page (Settings → About). ELLC creeds © 1988 English Language Liturgical Consultation. Scheduling: FSRS (open-spaced-repetition).

@@ -412,7 +412,7 @@
       (t.source === "abible" ? '<p class="fine">Provided through <a href="https://api.bible" target="_blank" rel="noopener">API.Bible</a>. Not read aloud, and the words can\'t be changed, as its license asks.</p>' : "") + "</div>").join("");
     return '<section class="view"><a class="back" href="#settings">' + ICON.back + "Settings</a><h1 class=\"h1\">Copyright</h1>" + rows +
       '<div class="card card--soft"><p class="fine">When NIV, NKJV or CSB words are on screen, By Heart tells API.Bible anonymously (their FUMS view count, which the publishers rely on). It sends no name or account, only random device and session numbers.</p>' +
-      '<p class="fine">BSB, KJV and WEB come through the Free Use Bible API (bible.helloao.org). Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation.</p></div></section>';
+      '<p class="fine">Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation.</p></div></section>';
   }
 
   // ---------- picking a verse ----------
@@ -424,7 +424,7 @@
   function currentTr() {
     if (Bible.ready(set().tr)) return set().tr;
     const t = Bible.TRANSLATIONS.find(x => Bible.ready(x.id));
-    return t ? t.id : "BSB";
+    return t ? t.id : "ESV";
   }
   function trChips(sel, act) {
     return '<div class="chips tr-chips" role="group" aria-label="Translation">' + Bible.TRANSLATIONS.map(t => {
@@ -479,22 +479,16 @@
   }
   // The verse list always comes from a free translation (the chosen one if it's free), so browsing
   // never uses up the licensed translations' limits.
-  function listCode(tr) { const t = Bible.translation(tr); return t && t.source === "free" ? t.code : "BSB"; }
   function versesHTML(tr) {
-    const code = listCode(tr), k = code + "/" + pick.book + "/" + pick.ch;
-    if (pick.listKey !== k) {
-      pick.listKey = k; pick.verses = null;
-      Bible.chapterVerses(code, pick.book, pick.ch).then(v => { if (pick && pick.listKey === k) { pick.verses = v; route(); } })
-        .catch(() => { if (pick && pick.listKey === k) { pick.verses = []; pick.listError = true; route(); } });
-    }
     const name = (pick.book === "PSA" ? "Psalm " : Bible.book(pick.book)[1] + " ") + pick.ch;
-    if (!pick.verses) return '<h2 class="h3">' + esc(name) + '</h2><p class="empty">Opening ' + esc(name) + "…</p>";
-    if (pick.listError) return '<p class="empty">Couldn\'t open that chapter. Check your connection.</p>';
-    const a = pick.a, b = pick.b || pick.a;
-    const shownTr = Bible.translation(tr).source === "free" ? "" : '<p class="fine">Shown in the BSB so you can choose. You\'ll get the ' + esc(tr) + ".</p>";
+    const n = Bible.verseCount(pick.book, pick.ch), a = pick.a, b = pick.b || pick.a;
     const sel = a ? Bible.refString({ book: pick.book, ch: pick.ch, a, b }) : "";
-    return '<h2 class="h3">' + esc(name) + ": tap the first verse, then the last</h2>" + shownTr +
-      '<ol class="verses">' + pick.verses.map(v => '<li><button class="verse-btn' + (a && v.n >= a && v.n <= b ? " on" : "") + '" data-act="pick-verse" data-v="' + v.n + '" aria-pressed="' + !!(a && v.n >= a && v.n <= b) + '"><b>' + v.n + "</b> " + esc(v.text).replace(/\n/g, " ") + "</button></li>").join("") + "</ol>" +
+    let grid = '<div class="chapgrid versegrid">';
+    for (let v = 1; v <= n; v++) {
+      const on = !!(a && v >= a && v <= b);
+      grid += '<button class="chap' + (on ? " on" : "") + '" data-act="pick-verse" data-v="' + v + '" aria-pressed="' + on + '" aria-label="Verse ' + v + '">' + v + "</button>";
+    }
+    return '<h2 class="h3">' + esc(name) + ": tap the first verse, then the last</h2>" + grid + "</div>" +
       (a ? '<div class="pickbar"><span>' + esc(sel) + " · " + esc(tr) + '</span><button class="btn btn--primary" data-act="pick-get">Get it</button></div>' : "");
   }
   async function getPicked() {
@@ -714,7 +708,7 @@
       "<li><b>Spaced reviews.</b> Reviews come back just before you'd forget, further apart each time (the FSRS scheduler).</li>" +
       "<li><b>Three good days.</b> A passage counts as memorized after you recall it on three different days.</li>" +
       "<li><b>Forgiving checks.</b> Spelling isn't memory, so small slips count as right.</li></ul></div>" +
-      '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. BSB, KJV and WEB are public domain, through the Free Use Bible API (bible.helloao.org). NIV, NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
+      '<div class="card"><h2 class="h3">About</h2><p class="fine">ESV: Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. NIV, NKJV and CSB come through API.Bible. Prayers use traditional wording; ELLC texts © 1988 English Language Liturgical Consultation. <a href="#copyright">All copyright notices</a></p>' +
       '<p class="fine">By Heart · Version ' + VERSION + '</p><button class="btn btn--quiet" data-act="start-over">Start over (erase everything)</button></div></section>';
   }
   function fillVoices() {

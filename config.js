@@ -1,5 +1,5 @@
 // By Heart: keys for the licensed Bible translations. Fill these in, then upload this file with the rest.
-// Leave a value empty and that translation shows as "not set up yet". BSB, KJV and WEB always work.
+// Leave a value empty and that translation shows as "not set up yet".
 window.BIBLE_CONFIG = {
   // ESV. The web address of your proxy (see the esv-proxy folder next to this one), like
   // "https://by-heart-esv.yourname.workers.dev". Your ESV API key lives on the proxy, never here.

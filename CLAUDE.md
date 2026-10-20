@@ -15,7 +15,7 @@ By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing B
 - `account.js` + `firebase-config.js`: optional accounts (Firebase, its own project, not Iron's). Off while the config is `null`; setup in `../ACCOUNTS.md`.
 - `../esv-proxy/`: a Cloudflare Worker that holds the ESV and API.Bible keys (`/passage` for the ESV, `/bible` for NIV, NKJV and CSB). Not part of the website upload.
 - `style.css`: the whole design. Theme tokens at the top (cream default, light, mist, oxblood, night).
-- `sw.js`: offline cache. `manifest.webmanifest` + icons (`icon-192/512.png`, `apple-touch-icon.png`, `favicon-32.png`, `favicon.svg`: a cream heart with a cross cut out, on oxblood #7a2e2e).
+- `sw.js`: offline cache. `manifest.webmanifest` + icons (`icon-192/512.png`, `apple-touch-icon.png`, `favicon-32.png`, home-screen icons are a cream heart with a cross cut out, on oxblood #7a2e2e. The browser-tab icon (`favicon.svg`, `favicon-32.png`) is just the heart with the cross cut out, like the header mark: oxblood in light mode, gold #e3b76c in dark mode. The icon links carry `?v=` so updates show).
 
 ## How practice works (keep these; they're the research findings)
 - **Recall, not rereading.** Every step asks for the words from memory, then shows word-level feedback.
@@ -34,8 +34,7 @@ By Heart is a static web app (plain HTML/CSS/JS, no build step) for memorizing B
 - Editing a passage's words clears its progress (after a confirm).
 
 ## Translations
-The picker offers ESV, NIV, NKJV, CSB first (the owner's picks), then the free BSB, KJV and WEB. Browsing chapters always uses a free translation (BSB unless a free one is chosen), so licensed sources are only asked when someone adds a passage.
-- **BSB, KJV, WEB:** Free Use Bible API (bible.helloao.org), public domain, no key, CORS open.
+The picker offers only the ESV, NIV, NKJV and CSB (owner's decision, Oct 20, 2026: BSB, KJV and WEB were removed as choices). Choosing verses shows a grid of verse numbers from `VERSE_COUNTS` in `bible.js` (standard English numbering, built once from the BSB), so no Bible text loads and the licensed sources are only asked when someone adds a passage. A translation that numbers a verse differently (e.g. 3 John 15 in the ESV) can still be reached by typing the reference.
 - **NIV:** through API.Bible like the NKJV and CSB (owner's decision, Oct 20, 2026, after reading Biblica's terms; API.Bible's NIV comes with Biblica's own license as custom terms). Same API.Bible rules apply, plus a link whose text includes "Biblica" every time NIV text is shown (`linkText` in `bible.js`). Not through YouVersion Platform: the owner's YouVersion app "By Heart" is unused and that license was never accepted there.
 - **ESV:** Crossway's ESV API through `../esv-proxy` (the key must not be published). Free for non-commercial use only (no ads, sales or donations); show "ESV", Crossway's copyright line and an esv.org link; at most 500 ESV verses stored per device (the app enforces this).
 - **NKJV, CSB:** API.Bible (rest.api.bible) through the proxy's `/bible?tr=NKJV&ref=JHN.3.16-JHN.3.18` route. They aren't on YouVersion Platform (as of Oct 2026). Free Starter plan (checked Oct 20, 2026 against the terms dated Sept. 3, 2026): non-commercial only, up to 3 licensed Bibles, 5,000 calls a month for the whole app, and the NKJV only while the app has 5,000 or fewer monthly users. The Worker finds each Bible's ID by abbreviation (CSB is `a556c5305ee15c3f-01` per the docs; the NKJV ID isn't published) and passes back the text, API.Bible's copyright line and the FUMS token. Untested against the live API (no key yet): check the text format the first time. What the terms require, and where the app does it:

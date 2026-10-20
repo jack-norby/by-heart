@@ -1,9 +1,9 @@
 // By Heart: offline support. The app shell is cached on install; bump VERSION (with the ?v= in
 // index.html) on every release so phones pick up the new files.
-const VERSION = "202610201345";
+const VERSION = "202610201406";
 const CACHE = "byheart-" + VERSION;
 const SHELL = [
-  "./", "index.html", "manifest.webmanifest", "favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png",
+  "./", "index.html", "manifest.webmanifest", "favicon.svg?v=" + VERSION, "favicon-32.png?v=" + VERSION, "apple-touch-icon.png", "icon-192.png", "icon-512.png",
   "style.css?v=" + VERSION, "config.js?v=" + VERSION, "bible.js?v=" + VERSION, "library.js?v=" + VERSION, "words.js?v=" + VERSION, "memory.js?v=" + VERSION, "app.js?v=" + VERSION, "firebase-config.js?v=" + VERSION, "account.js?v=" + VERSION,
 ];
 
